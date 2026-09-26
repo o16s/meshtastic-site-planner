@@ -15,10 +15,16 @@
       >
         {{ store.linkState === 'placing' ? 'Click the map…' : 'Add receiver' }}
       </button>
+      <button type="button" class="mt-btn mt-btn-secondary mt-btn-sm" title="Import receivers from a zipped point shapefile (.shp/.dbf/.prj)" @click="fileInput?.click()">
+        Import…
+      </button>
+      <input ref="fileInput" type="file" accept=".zip" class="hidden" @change="onImport" />
       <button v-if="store.receivers.length" type="button" class="mt-btn mt-btn-secondary mt-btn-sm" @click="store.clearLink()">
         Clear all
       </button>
     </div>
+
+    <p v-if="importMsg" class="mt-hint mt-2" role="status">{{ importMsg }}</p>
 
     <ul v-if="store.receivers.length" class="mt-2 flex flex-col gap-1">
       <li
@@ -29,7 +35,7 @@
         @click="store.selectedRx = i"
       >
         <span class="size-2.5 shrink-0 rounded-full" :style="{ background: linkColor(r.analysis) }" aria-hidden="true"></span>
-        <span class="font-semibold">#{{ i + 1 }}</span>
+        <span class="font-semibold">{{ rxLabel(i) }}</span>
         <span class="flex-1 text-ink-muted tabular-nums">
           <template v-if="r.analysis">
             {{ fmt(r.analysis.distanceKm, 1) }} km · {{ fmt(r.analysis.rxDbm, 1) }} dBm ·
@@ -37,17 +43,17 @@
           </template>
           <template v-else>computing…</template>
         </span>
-        <button type="button" class="px-1 text-ink-muted hover:text-ink" :aria-label="`Remove receiver ${i + 1}`" @click.stop="store.removeReceiver(i)">×</button>
+        <button type="button" class="px-1 text-ink-muted hover:text-ink" :aria-label="`Remove receiver ${rxLabel(i)}`" @click.stop="store.removeReceiver(i)">×</button>
       </li>
     </ul>
 
     <div v-if="sel" class="mt-2 grid grid-cols-2 gap-2">
       <div>
-        <label for="tgt_lat" class="mt-label">Receiver #{{ store.selectedRx + 1 }} lat</label>
+        <label for="tgt_lat" class="mt-label">{{ rxLabel(store.selectedRx) }} lat</label>
         <input id="tgt_lat" v-model.number="tLat" @change="applyCoords" type="number" step="0.000001" min="-90" max="90" class="mt-input" />
       </div>
       <div>
-        <label for="tgt_lon" class="mt-label">Receiver #{{ store.selectedRx + 1 }} lon</label>
+        <label for="tgt_lon" class="mt-label">{{ rxLabel(store.selectedRx) }} lon</label>
         <input id="tgt_lon" v-model.number="tLon" @change="applyCoords" type="number" step="0.000001" min="-180" max="180" class="mt-input" />
       </div>
     </div>
@@ -88,7 +94,7 @@
       <div v-if="chart" class="mt-link-axis">
         <span>TX</span>
         <span>{{ fmt(a.distanceKm, 1) }} km · {{ fmt(sel!.azimuthDeg, 0) }}°</span>
-        <span>RX #{{ store.selectedRx + 1 }}</span>
+        <span>{{ rxLabel(store.selectedRx) }}</span>
       </div>
 
       <button type="button" class="mt-btn mt-btn-secondary mt-btn-sm mt-2 w-full" @click="store.computeLink()">
@@ -102,10 +108,31 @@
 import { ref, computed, watch } from 'vue';
 import { useStore } from '../store.ts';
 import { linkColor } from '../engine/link.ts';
+import { importShapefileZip } from '../import/shapefile.ts';
 
 const store = useStore();
 const sel = computed(() => store.receivers[store.selectedRx]);
 const a = computed(() => sel.value?.analysis ?? null);
+const rxLabel = (i: number) => store.receivers[i]?.name ?? `#${i + 1}`;
+
+const fileInput = ref<HTMLInputElement | null>(null);
+const importMsg = ref('');
+async function onImport(e: Event) {
+  const input = e.target as HTMLInputElement;
+  const file = input.files?.[0];
+  input.value = ''; // allow re-importing the same file
+  if (!file) return;
+  importMsg.value = '';
+  try {
+    const { points, skipped } = await importShapefileZip(await file.arrayBuffer());
+    if (!points.length) throw new Error(`No usable points in ${file.name}.`);
+    store.importReceivers(points);
+    importMsg.value = `Imported ${points.length} receivers from ${file.name}` + (skipped ? ` (${skipped} skipped).` : '.');
+  } catch (err) {
+    store.linkError = err instanceof Error ? err.message : String(err);
+    store.linkState = 'error';
+  }
+}
 
 const tLat = ref<number | null>(null);
 const tLon = ref<number | null>(null);

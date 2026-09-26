@@ -221,7 +221,7 @@ const useStore = defineStore('store', {
       overlayStyle: 'heatmap' as 'heatmap' | 'contours',
       /** Point-to-point link mode (#14): receivers of the one Receiver type,
        * each linked to the transmitter being edited. */
-      receivers: [] as { lat: number; lon: number; analysis: LinkAnalysis | null; azimuthDeg: number }[],
+      receivers: [] as { lat: number; lon: number; name?: string; analysis: LinkAnalysis | null; azimuthDeg: number }[],
       /** Index into receivers shown in the detail view, -1 for none. */
       selectedRx: -1,
       linkState: 'idle' as 'idle' | 'placing' | 'computing' | 'done' | 'error',
@@ -347,6 +347,31 @@ const useStore = defineStore('store', {
     addReceiver(lat: number, lon: number) {
       this.receivers.push({ lat, lon, analysis: null, azimuthDeg: 0 });
       this.selectedRx = this.receivers.length - 1;
+      this.drawLink();
+      void this.computeLink();
+    },
+    /** Replace all receivers with imported points, put the transmitter at
+     * their bounding-box center, and fit the map to them. */
+    importReceivers(points: { lat: number; lon: number; name: string }[]) {
+      if (!points.length) return;
+      this.clearLink();
+      this.receivers = points.map((p) => ({ ...p, analysis: null, azimuthDeg: 0 }));
+      this.selectedRx = 0;
+      const lats = points.map((p) => p.lat);
+      const lons = points.map((p) => p.lon);
+      const [s, n, w, e] = [Math.min(...lats), Math.max(...lats), Math.min(...lons), Math.max(...lons)];
+      const lat = Number(((s + n) / 2).toFixed(6));
+      const lon = Number(((w + e) / 2).toFixed(6));
+      this.setTxCoords(lat, lon);
+      this.setDraftMarker(lat, lon);
+      if (map) {
+        // Keep the points clear of the open parameters drawer (it overlays the
+        // map's right edge) unless it covers most of the map, as on phones.
+        const drawer = document.querySelector('aside[aria-label="Site parameters"][aria-hidden="false"]');
+        const dw = drawer?.getBoundingClientRect().width ?? 0;
+        const right = dw < map.getContainer().clientWidth / 2 ? dw + 60 : 60;
+        map.fitBounds([[w, s], [e, n]], { padding: { top: 170, bottom: 90, left: 60, right }, maxZoom: 15, duration: 0 });
+      }
       this.drawLink();
       void this.computeLink();
     },
