@@ -890,7 +890,9 @@ const useStore = defineStore('store', {
 
         const cropped = cropToRadius(result, request.lat, request.lon, request.radius);
         const siteParams = cloneObject(this.splatParams);
-        const id = crypto.randomUUID();
+        // crypto.randomUUID only exists in secure contexts (HTTPS/localhost);
+        // the id is just a local map/layer key, so fall back for plain-HTTP LAN use.
+        const id = crypto.randomUUID?.() ?? `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
         const stats = coverageStats(
           cropped,
           request.lat,
