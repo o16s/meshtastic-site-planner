@@ -75,6 +75,30 @@ interface PoolWorker {
 export interface LinkRunOptions {
   terrain: import('../terrain/TerrainService').TerrainProvider;
   signal?: AbortSignal;
+  landCover?: import('./CoverageEngine').LandCoverProvider;
+}
+
+/** Land-cover clutter for the pages that have terrain; a failed fetch just
+ * leaves that page on the uniform clutter. */
+async function fetchClutter(
+  refs: PageRef[],
+  pages: (Int16Array | null)[],
+  landCover: LinkRunOptions['landCover'],
+  signal?: AbortSignal
+): Promise<(Uint8Array | null)[]> {
+  if (!landCover) return [];
+  const out = await Promise.all(
+    refs.map((ref, i) =>
+      pages[i]
+        ? landCover(ref, signal).catch((err) => {
+            if (err instanceof DOMException && err.name === 'AbortError') throw err;
+            return null;
+          })
+        : Promise.resolve(null)
+    )
+  );
+  signal?.throwIfAborted();
+  return out;
 }
 
 function pageKey(ref: PageRef): string {
@@ -169,6 +193,7 @@ export class WasmCoverageEngine implements CoverageEngine {
         })
       );
       opts.signal?.throwIfAborted();
+      const clutter = await fetchClutter(refs, pages, opts.landCover, opts.signal);
 
       /* Compute phase. Each worker holds its own copy of every page (no
        * SharedArrayBuffer), and during a run the page exists twice per
@@ -255,6 +280,7 @@ export class WasmCoverageEngine implements CoverageEngine {
             runId,
             params,
             pages,
+            clutter,
             start: slice.start,
             end: slice.end,
             chunk: RADIAL_CHUNK,
@@ -299,6 +325,7 @@ export class WasmCoverageEngine implements CoverageEngine {
           itmWarnings,
           elapsedMs: performance.now() - started,
           workers: slices.length,
+          ...(opts.landCover ? { landCoverPages: clutter.filter((c) => c !== null).length } : {}),
         },
       };
     } finally {
@@ -334,9 +361,12 @@ export class WasmCoverageEngine implements CoverageEngine {
         )
       );
       opts.signal?.throwIfAborted();
+      const clutter = await fetchClutter(refs, pages, opts.landCover, opts.signal);
       for (let i = 0; i < refs.length; i++) {
         const data = pages[i];
         if (data) ctx.loadPage(i, data);
+        const c = clutter[i];
+        if (data && c) ctx.loadClutter(i, c);
       }
       return ctx.pointToPoint(target.lat, target.lon, target.altFeet);
     } finally {

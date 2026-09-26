@@ -21,8 +21,26 @@
           <option value="vertical">Vertical</option>
         </select>
       </div>
+      <div class="col-span-2">
+        <label for="clutter_source" class="mt-label">Clutter (trees, buildings)</label>
+        <select v-model="environment.clutter_source" id="clutter_source" class="mt-select">
+          <option value="uniform">Uniform height everywhere (classic)</option>
+          <option value="landcover">From land cover map (10 m)</option>
+        </select>
+        <p v-if="environment.clutter_source === 'landcover'" class="mt-hint mt-1">
+          Trees get the tree height, bare ground/lava and water none, fields ~1 m, built-up 8 m.
+          Elevation data already includes part of a dense canopy, so use less than the full tree height.
+          {{ LANDCOVER_ATTRIBUTION }}.
+        </p>
+      </div>
+      <div v-if="environment.clutter_source === 'landcover'">
+        <label for="tree_height" class="mt-label">Tree height (m)</label>
+        <input v-model.number="environment.tree_height" type="number" class="mt-input" id="tree_height" min="0" max="60" step="1" />
+      </div>
       <div>
-        <label for="clutter_height" class="mt-label">Clutter Height (m)</label>
+        <label for="clutter_height" class="mt-label">
+          {{ environment.clutter_source === 'landcover' ? 'Clutter where unknown (m)' : 'Clutter Height (m)' }}
+        </label>
         <input v-model="environment.clutter_height" type="number" class="mt-input" id="clutter_height" min="0" step="0.1" />
       </div>
       <div>
@@ -42,6 +60,10 @@
 </template>
 
 <script setup lang="ts">
+import { watch } from 'vue';
 import { useStore } from '../store.ts';
-const environment = useStore().splatParams.environment;
+import { LANDCOVER_ATTRIBUTION } from '../terrain/landcover.ts';
+const store = useStore();
+const environment = store.splatParams.environment;
+watch(() => environment.clutter_source, () => store.syncLandCoverCredit());
 </script>

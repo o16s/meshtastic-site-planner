@@ -31,8 +31,11 @@ export interface LinkAnalysisInput {
 export interface LinkSample {
   distanceKm: number;
   groundM: number;
-  /** Ground raised by the earth-curvature bulge: what the ray must clear. */
+  /** Ground raised by the earth-curvature bulge. */
   curvedGroundM: number;
+  /** curvedGroundM plus the clutter (trees etc.) the model used here: what
+   * the ray must clear. Equals curvedGroundM where there is no clutter. */
+  obstacleM: number;
   /** Straight line-of-sight ray height at this distance, meters. */
   rayM: number;
   /** Bottom of the first Fresnel zone (rayM - first-Fresnel radius). */
@@ -82,8 +85,11 @@ export function analyzeLink(input: LinkAnalysisInput): LinkAnalysis {
     const d2 = Math.max(0, totalM - d1); // to target
     const bulge = totalM > 0 ? (d1 * d2) / (2 * EFFECTIVE_EARTH_M) : 0;
     const curvedGroundM = profile[i].groundM + bulge;
+    // Clutter as the engine used it (0 on the endpoints); older/test profiles
+    // without it are bare ground.
+    const obstacleM = curvedGroundM + (profile[i].clutterM ?? 0);
     const rayM = totalM > 0 ? txElevM + (rxElevM - txElevM) * (d1 / totalM) : txElevM;
-    const clearance = rayM - curvedGroundM;
+    const clearance = rayM - obstacleM;
     const fresnelR = totalM > 0 ? Math.sqrt((wavelengthM * d1 * d2) / totalM) : 0;
 
     if (i > 0 && i < n - 1) {
@@ -96,6 +102,7 @@ export function analyzeLink(input: LinkAnalysisInput): LinkAnalysis {
       distanceKm: profile[i].distanceKm,
       groundM: profile[i].groundM,
       curvedGroundM,
+      obstacleM,
       rayM,
       fresnelBottomM: rayM - fresnelR,
     });

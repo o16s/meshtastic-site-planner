@@ -36,17 +36,23 @@ ctx.onmessage = async (event: MessageEvent<ToWorker>) => {
   }
 
   if (msg.type !== 'run') return;
-  const { runId, params, pages, start, end, chunk } = msg;
+  const { runId, params, pages, clutter, start, end, chunk } = msg;
 
   try {
     const m = await getModule();
-    const result = await runCoverageSlice(m, params, pages, {
-      start,
-      end,
-      chunk,
-      onProgress: (radialsDone) => post({ type: 'progress', runId, radialsDone }),
-      shouldCancel: () => cancelled.has(runId),
-    });
+    const result = await runCoverageSlice(
+      m,
+      params,
+      pages,
+      {
+        start,
+        end,
+        chunk,
+        onProgress: (radialsDone) => post({ type: 'progress', runId, radialsDone }),
+        shouldCancel: () => cancelled.has(runId),
+      },
+      clutter
+    );
     cancelled.delete(runId);
     post(
       {

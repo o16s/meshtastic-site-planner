@@ -60,6 +60,9 @@ export interface LinkProfilePoint {
   distanceKm: number;
   /** Ground elevation, meters (no clutter). */
   groundM: number;
+  /** Clutter the ITM path used on top of the ground here, meters (uniform or
+   * land cover; 0 on the endpoints and sea-level cells). Absent = none. */
+  clutterM?: number;
 }
 
 export interface LinkResult {
@@ -78,6 +81,10 @@ export interface LinkResult {
 export function pageCells(ippd: number): number {
   return ippd * ippd;
 }
+
+/** Land-cover clutter pages are always on this grid (engine CLUTTER_IPPD):
+ * meters per cell, page cell order, 255 = unknown (uniform clutter applies). */
+export const CLUTTER_IPPD = 1200;
 
 const ENGINE_ERRORS: Record<number, string> = {
   [-1]: 'out of memory',
@@ -159,6 +166,20 @@ export class EngineContext {
     try {
       this.m.HEAPU8.set(bytes, ptr);
       check(this.m._splat_load_page(this.handle, index, ptr), 'splat_load_page');
+    } finally {
+      this.m._splat_free(ptr);
+    }
+  }
+
+  /** Optional per-cell clutter for a loaded page (see CLUTTER_IPPD). */
+  loadClutter(index: number, data: Uint8Array): void {
+    if (data.length !== CLUTTER_IPPD * CLUTTER_IPPD)
+      throw new Error(`clutter ${index}: expected ${CLUTTER_IPPD ** 2} cells, got ${data.length}`);
+    const ptr = this.m._splat_malloc(data.length);
+    if (!ptr) throw new EngineError(-1, 'splat_malloc');
+    try {
+      this.m.HEAPU8.set(data, ptr);
+      check(this.m._splat_load_clutter(this.handle, index, ptr), 'splat_load_clutter');
     } finally {
       this.m._splat_free(ptr);
     }
@@ -252,7 +273,7 @@ export class EngineContext {
         v = this.m.HEAPF64;
         const pb = pptr >> 3;
         for (let i = 0; i < n; i++)
-          result.profile.push({ distanceKm: v[pb + 2 * i], groundM: v[pb + 2 * i + 1] });
+          result.profile.push({ distanceKm: v[pb + 3 * i], groundM: v[pb + 3 * i + 1], clutterM: v[pb + 3 * i + 2] });
       }
       return result;
     } finally {
@@ -331,7 +352,9 @@ export async function runCoverageSlice(
   m: SplatModule,
   params: EngineRunParams,
   pageData: (Int16Array | null)[],
-  opts: RunSliceOptions = {}
+  opts: RunSliceOptions = {},
+  /** Optional land-cover clutter per page (null = uniform clutter there). */
+  clutterData: (Uint8Array | null)[] = []
 ): Promise<RunSliceResult> {
   const ctx = EngineContext.create(m, params);
   try {
@@ -341,6 +364,8 @@ export async function runCoverageSlice(
     for (let i = 0; i < refs.length; i++) {
       const data = pageData[i];
       if (data) ctx.loadPage(i, data);
+      const clutter = clutterData[i];
+      if (data && clutter) ctx.loadClutter(i, clutter);
     }
 
     const total = ctx.radialCount();

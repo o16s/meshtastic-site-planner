@@ -3,6 +3,7 @@
   "_splat_page_count",
   "_splat_page_info",
   "_splat_load_page",
+  "_splat_load_clutter",
   "_splat_radial_count",
   "_splat_run_radials",
   "_splat_rasterize",

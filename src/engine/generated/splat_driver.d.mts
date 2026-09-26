@@ -24,6 +24,7 @@ export interface SplatModule {
   _splat_page_count(handle: number): number;
   _splat_page_info(handle: number, index: number, outPtr: number): number;
   _splat_load_page(handle: number, index: number, dataPtr: number): number;
+  _splat_load_clutter(handle: number, index: number, dataPtr: number): number;
   _splat_radial_count(handle: number): number;
   _splat_run_radials(handle: number, start: number, count: number): number;
   _splat_rasterize(handle: number): number;

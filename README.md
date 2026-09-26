@@ -32,6 +32,7 @@ Beyond a basic coverage run, the planner includes:
 - **Device presets** — pick a common Meshtastic radio (Heltec V3/V4/V2, LILYGO T-Beam/T-Echo/T-Deck, RAK WisBlock, Station G2, SenseCAP T1000) to prefill typical transmit power and stock-antenna gain.
 - **Find highpoint** — snap the transmitter to the highest ground within a search radius, for quick hilltop siting.
 - **Point-to-point link** — analyze the link to one target: terrain profile, line of sight (with earth curvature), first Fresnel-zone clearance, and a link budget (received power and margin) from the same ITM model used for area coverage.
+- **Clutter from land cover** (Environment → Clutter) — instead of one clutter height everywhere, use the 10 m Impact Observatory / Esri land-cover map: trees get the tree height, bare ground/lava and water none, fields ~1 m, built-up ~8 m. The ITM path then diffracts over the canopy only where there is canopy, and point-to-point line of sight / Fresnel clearance account for it too. Land cover © Impact Observatory, Microsoft, Esri (CC BY 4.0).
 - **Coverage statistics** — each site reports the area covered (above the receiver sensitivity), the maximum usable range, and the percentage of the plotted disk covered.
 - **Measure tool** — click two points to read great-circle distance and bearing.
 - **Two overlay styles** — a continuous signal heatmap or vector iso-contours, recolored live (color scale, min/max dBm, transparency) without recomputing.

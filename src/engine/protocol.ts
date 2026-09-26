@@ -9,6 +9,9 @@ export interface RunRequest {
   /** Page elevation data aligned with the engine's page list; null = ocean.
    * Int16Arrays are transferred, one copy per worker. */
   pages: (Int16Array | null)[];
+  /** Optional land-cover clutter per page (CLUTTER_IPPD grid); null or
+   * absent = uniform clutter. */
+  clutter?: (Uint8Array | null)[];
   /** Radial slice [start, end) this worker computes. */
   start: number;
   end: number;

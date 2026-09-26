@@ -91,6 +91,7 @@
 
       <svg v-if="chart" class="mt-link-chart mt-2" :viewBox="`0 0 ${chart.W} ${chart.H}`" preserveAspectRatio="none"
         role="img" aria-label="Terrain profile with line of sight and Fresnel zone">
+        <polygon v-if="chart.hasClutter" :points="chart.clutterArea" fill="#3f8f5a" opacity="0.55" stroke="none" />
         <polygon :points="chart.terrainArea" fill="#3a4150" stroke="none" />
         <polyline :points="chart.terrain" fill="none" stroke="#8a93a6" stroke-width="1" />
         <polyline :points="chart.fresnel" fill="none" :stroke="rayColor" stroke-width="1" stroke-dasharray="3 2" opacity="0.7" />
@@ -176,7 +177,7 @@ const chart = computed(() => {
   let yMax = -Infinity;
   for (const p of s) {
     yMin = Math.min(yMin, p.curvedGroundM, p.rayM, p.fresnelBottomM);
-    yMax = Math.max(yMax, p.curvedGroundM, p.rayM, p.fresnelBottomM);
+    yMax = Math.max(yMax, p.obstacleM, p.rayM, p.fresnelBottomM);
   }
   if (yMin === yMax) {
     yMin -= 1;
@@ -190,11 +191,20 @@ const chart = computed(() => {
   const pts = (sel: (p: (typeof s)[number]) => number) =>
     s.map((p) => `${X(p.distanceKm).toFixed(1)},${Y(sel(p)).toFixed(1)}`).join(' ');
   const terrain = pts((p) => p.curvedGroundM);
+  // Clutter band (canopy etc.) from the ground up to what the ray must clear.
+  const canopy = pts((p) => p.obstacleM);
+  const groundBack = s
+    .slice()
+    .reverse()
+    .map((p) => `${X(p.distanceKm).toFixed(1)},${Y(p.curvedGroundM).toFixed(1)}`)
+    .join(' ');
   return {
     W,
     H,
     terrain,
     terrainArea: `${padX},${(H - padY).toFixed(1)} ${terrain} ${(W - padX).toFixed(1)},${(H - padY).toFixed(1)}`,
+    clutterArea: `${canopy} ${groundBack}`,
+    hasClutter: s.some((p) => p.obstacleM > p.curvedGroundM + 0.01),
     fresnel: pts((p) => p.fresnelBottomM),
     ray: `${X(s[0].distanceKm)},${Y(s[0].rayM)} ${X(s[s.length - 1].distanceKm)},${Y(s[s.length - 1].rayM)}`,
   };

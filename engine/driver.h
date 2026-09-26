@@ -56,6 +56,11 @@ int splat_page_info(int handle, int index, int32_t *out2);
  * Pages never loaded behave as sea level, matching SPLAT!. */
 int splat_load_page(int handle, int index, const int16_t *data);
 
+/* Optional per-page land-cover clutter: 1200x1200 bytes, meters per cell in
+ * the page's cell order, 255 = unknown (uniform clutter applies). Pages
+ * without it use the uniform clutter everywhere (legacy behavior). */
+int splat_load_clutter(int handle, int index, const uint8_t *data);
+
 /* Total number of radials in the perimeter sweep. */
 int splat_radial_count(int handle);
 

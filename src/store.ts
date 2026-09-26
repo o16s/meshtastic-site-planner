@@ -37,6 +37,8 @@ import {
 } from './permalink.ts';
 import { coverageStats } from './coverageStats.ts';
 import { TerrainService } from './terrain/TerrainService.ts';
+import { LANDCOVER_ATTRIBUTION, landCoverPage } from './terrain/landcover.ts';
+import type { LandCoverProvider } from './engine/CoverageEngine.ts';
 
 // Module-level singletons: workers, terrain cache, and map handles outlive
 // store hot-reloads and never need to be reactive.
@@ -193,6 +195,8 @@ function defaultParams(): SplatParams {
       radio_climate: 'continental_temperate',
       polarization: 'vertical',
       clutter_height: 1.0,
+      clutter_source: 'uniform',
+      tree_height: 15,
       ground_dielectric: 15.0,
       ground_conductivity: 0.005,
       atmosphere_bending: 301.0,
@@ -222,6 +226,14 @@ function initialParams(): SplatParams {
     return p;
   }
   return loadParams(d);
+}
+
+/** Land-cover clutter provider when the environment asks for it, else
+ * undefined (uniform clutter, the legacy model). */
+function landCoverFor(p: SplatParams): LandCoverProvider | undefined {
+  if (p.environment.clutter_source !== 'landcover') return undefined;
+  const tree = Number(p.environment.tree_height) || 0;
+  return (ref, signal) => landCoverPage(ref, tree, signal);
 }
 
 /** Opened from a shared #cfg permalink or ?lat= hand-off. Read at module load:
@@ -453,6 +465,7 @@ const useStore = defineStore('store', {
           const target = { lat: r.lat, lon: r.lon, altFeet: p.receiver.rx_height / METERS_PER_FOOT };
           const link = await (await getEngine()).runLink(toEngineParams(request), target, {
             terrain: getTerrain(),
+            landCover: landCoverFor(p),
             signal,
           });
           if (signal.aborted) return;
@@ -614,6 +627,21 @@ const useStore = defineStore('store', {
         saveParams(this.splatParams);
         clearSharedHash();
         clearSharedQuery();
+      }
+    },
+
+    /** Show the land-cover credit in the map attribution while it is used. */
+    syncLandCoverCredit() {
+      if (!map) return;
+      const on = this.splatParams.environment.clutter_source === 'landcover';
+      const id = 'credit-landcover';
+      // MapLibre only credits sources a layer uses: an empty source + layer.
+      if (on && !map.getSource(id)) {
+        map.addSource(id, { type: 'geojson', data: { type: 'FeatureCollection', features: [] }, attribution: LANDCOVER_ATTRIBUTION });
+        map.addLayer({ id, type: 'fill', source: id });
+      } else if (!on && map.getSource(id)) {
+        map.removeLayer(id);
+        map.removeSource(id);
       }
     },
 
@@ -985,6 +1013,7 @@ const useStore = defineStore('store', {
           void this.computeLink();
         }
         void this.restoreCanvas();
+        this.syncLandCoverCredit();
         // App hand-off (#cfg/?run=1): compute coverage once the map is ready, so
         // the resulting overlay and site marker have somewhere to attach.
         if (this.autoRun) {
@@ -1076,6 +1105,7 @@ const useStore = defineStore('store', {
 
         const result = await (await getEngine()).run(params, {
           terrain: getTerrain(),
+          landCover: landCoverFor(this.splatParams),
           signal: abortController.signal,
           onProgress: (p) => {
             this.progress = p;

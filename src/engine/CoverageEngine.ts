@@ -34,13 +34,21 @@ export interface CoverageResult {
     itmWarnings: number[];
     elapsedMs: number;
     workers: number;
+    /** Pages that got land-cover clutter (land-cover mode only). */
+    landCoverPages?: number;
   };
 }
+
+/** Per-page land-cover clutter (CLUTTER_IPPD grid, see core.ts), or null to
+ * use the uniform clutter on that page. */
+export type LandCoverProvider = (ref: import('./core').PageRef, signal?: AbortSignal) => Promise<Uint8Array | null>;
 
 export interface CoverageRunOptions {
   terrain: TerrainProvider;
   signal?: AbortSignal;
   onProgress?: (p: CoverageProgress) => void;
+  /** Land-cover clutter; omitted = uniform clutter everywhere (legacy). */
+  landCover?: LandCoverProvider;
 }
 
 export interface CoverageEngine {

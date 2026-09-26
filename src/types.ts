@@ -32,6 +32,11 @@ export interface SplatParams {
         radio_climate: string;
         polarization: string;
         clutter_height: number;
+        /** 'landcover' = per-cell clutter from the land-cover map, with
+         * clutter_height only where land cover is unknown. */
+        clutter_source: 'uniform' | 'landcover';
+        /** Clutter height of tree-covered cells in 'landcover' mode, m. */
+        tree_height: number;
         ground_dielectric: number;
         ground_conductivity: number;
         atmosphere_bending: number;

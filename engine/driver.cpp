@@ -39,6 +39,8 @@
 #define KM_PER_MILE 1.609344
 #define FOUR_THIRDS 1.3333333333333
 #define ARRAYSIZE 76810
+/* Land-cover clutter grid per page (3-arcsecond, like standard terrain). */
+#define CLUTTER_IPPD 1200
 
 /* deg_limit table entries and page caps for the two production builds:
  * standard (`splat`, MAXPAGES=64) and HD (`splat-hd`, MAXPAGES=16). */
@@ -70,6 +72,10 @@ struct Page {
     short *data;     /* [ippd][ippd], meters; x south->north, y east->west */
     unsigned char *mask;
     unsigned char *signal;
+    /* Optional per-cell clutter (land cover), meters, on a fixed
+     * CLUTTER_IPPD grid in the same cell order as data; 255 = unknown. When
+     * absent (or unknown), the engine-wide uniform clutter applies. */
+    unsigned char *clutter;
 };
 
 struct Engine {
@@ -111,6 +117,7 @@ struct Engine {
     std::vector<double> path_lat;
     std::vector<double> path_lon;
     std::vector<double> path_elevation;
+    std::vector<double> path_clutter; /* feet, per path point (see GetClutter) */
     std::vector<double> path_distance;
     int path_length = 0;
     std::vector<double> elev;
@@ -206,6 +213,22 @@ unsigned char GetSignal(Engine &e, double lat, double lon) {
     return 0;
 }
 
+/* Clutter height at a location, in feet: the page's land-cover clutter when
+ * loaded and known, else the uniform clutter. With no clutter pages loaded
+ * this is always e.clutter, so results match the legacy uniform model. */
+double GetClutter(Engine &e, const Site &location) {
+    int x, y;
+    Page *p = find_page(e, location.lat, location.lon, x, y);
+    if (p && p->clutter) {
+        int cx = x * CLUTTER_IPPD / e.ippd;
+        int cy = y * CLUTTER_IPPD / e.ippd;
+        unsigned char m = p->clutter[cx * CLUTTER_IPPD + cy];
+        if (m != 255)
+            return m / METERS_PER_FOOT;
+    }
+    return e.clutter;
+}
+
 double GetElevation(Engine &e, const Site &location) {
     int x, y;
     Page *p = find_page(e, location.lat, location.lon, x, y);
@@ -297,6 +320,7 @@ void ReadPath(Engine &e, const Site &source, const Site &destination) {
         e.path_lat[c] = lat1;
         e.path_lon[c] = lon1;
         e.path_elevation[c] = GetElevation(e, source);
+        e.path_clutter[c] = GetClutter(e, source);
         e.path_distance[c] = 0.0;
     }
 
@@ -339,6 +363,7 @@ void ReadPath(Engine &e, const Site &source, const Site &destination) {
         tempsite.lat = lat2;
         tempsite.lon = lon2;
         e.path_elevation[c] = GetElevation(e, tempsite);
+        e.path_clutter[c] = GetClutter(e, tempsite);
         e.path_distance[c] = distance;
     }
 
@@ -348,6 +373,7 @@ void ReadPath(Engine &e, const Site &source, const Site &destination) {
         e.path_lat[c] = destination.lat;
         e.path_lon[c] = destination.lon;
         e.path_elevation[c] = GetElevation(e, destination);
+        e.path_clutter[c] = GetClutter(e, destination);
         e.path_distance[c] = total_distance;
         c++;
     }
@@ -376,7 +402,7 @@ void PlotLRPath(Engine &e, const Site &source, const Site &destination) {
     for (int x = 1; x < e.path_length - 1; x++)
         elev[x + 2] = (e.path_elevation[x] == 0.0
                            ? e.path_elevation[x] * METERS_PER_FOOT
-                           : (e.clutter + e.path_elevation[x]) *
+                           : (e.path_clutter[x] + e.path_elevation[x]) *
                                  METERS_PER_FOOT);
 
     /* Copy ending points without clutter */
@@ -615,6 +641,7 @@ void free_engine(Engine *e) {
         free(p.data);
         free(p.mask);
         free(p.signal);
+        free(p.clutter);
     }
     delete e;
 }
@@ -747,6 +774,7 @@ int splat_create(double tx_lat_deg, double tx_lon_deg, double tx_alt_feet,
     e->path_lat.resize(ARRAYSIZE);
     e->path_lon.resize(ARRAYSIZE);
     e->path_elevation.resize(ARRAYSIZE);
+    e->path_clutter.resize(ARRAYSIZE);
     e->path_distance.resize(ARRAYSIZE);
     e->elev.resize(ARRAYSIZE + 10);
 
@@ -787,6 +815,25 @@ int splat_load_page(int handle, int index, const int16_t *data) {
         return SPLAT_E_BADPAGE;
     memcpy(e->pages[index].data, data,
            (size_t)e->ippd * (size_t)e->ippd * sizeof(int16_t));
+    return 0;
+}
+
+/* Optional land-cover clutter for a page: CLUTTER_IPPD^2 bytes, meters per
+ * cell in the page's cell order (x south->north, y east->west), 255 = unknown
+ * (falls back to the uniform clutter). Call after splat_load_page. */
+int splat_load_clutter(int handle, int index, const uint8_t *data) {
+    Engine *e = get_engine(handle);
+    if (!e)
+        return SPLAT_E_BADHANDLE;
+    if (index < 0 || index >= (int)e->pages.size() || !data)
+        return SPLAT_E_BADPAGE;
+    size_t cells = (size_t)CLUTTER_IPPD * (size_t)CLUTTER_IPPD;
+    Page &p = e->pages[index];
+    if (!p.clutter)
+        p.clutter = (unsigned char *)malloc(cells);
+    if (!p.clutter)
+        return SPLAT_E_NOMEM;
+    memcpy(p.clutter, data, cells);
     return 0;
 }
 
@@ -950,7 +997,7 @@ int splat_point_to_point(int handle, double dst_lat_deg, double dst_lon_deg,
     for (int x = 1; x < n - 1; x++)
         elev[x + 2] = (e->path_elevation[x] == 0.0
                            ? e->path_elevation[x] * METERS_PER_FOOT
-                           : (e->clutter + e->path_elevation[x]) *
+                           : (e->path_clutter[x] + e->path_elevation[x]) *
                                  METERS_PER_FOOT);
     elev[2] = e->path_elevation[0] * METERS_PER_FOOT;
     elev[n + 1] = e->path_elevation[n - 1] * METERS_PER_FOOT;
@@ -977,21 +1024,25 @@ int splat_point_to_point(int handle, double dst_lat_deg, double dst_lon_deg,
     out5[3] = Azimuth(e->tx, dst);
     out5[4] = (double)errnum;
 
-    /* Pack the ground profile as [distance_km, elevation_m] pairs (no clutter)
-     * for the UI's line-of-sight / Fresnel chart. */
-    e->p2p_profile.resize((size_t)n * 2);
+    /* Pack the profile as [distance_km, ground_m, clutter_m] triples for the
+     * UI's line-of-sight / Fresnel chart. Clutter is what the ITM path above
+     * used: none on the endpoints or sea-level cells. */
+    e->p2p_profile.resize((size_t)n * 3);
     for (int i = 0; i < n; i++) {
-        e->p2p_profile[(size_t)i * 2] = e->path_distance[i] * KM_PER_MILE;
-        e->p2p_profile[(size_t)i * 2 + 1] =
+        bool bare = i == 0 || i == n - 1 || e->path_elevation[i] == 0.0;
+        e->p2p_profile[(size_t)i * 3] = e->path_distance[i] * KM_PER_MILE;
+        e->p2p_profile[(size_t)i * 3 + 1] =
             e->path_elevation[i] * METERS_PER_FOOT;
+        e->p2p_profile[(size_t)i * 3 + 2] =
+            bare ? 0.0 : e->path_clutter[i] * METERS_PER_FOOT;
     }
     e->p2p_length = n;
 
     return n;
 }
 
-/* Pointer to the packed [distance_km, elevation_m] profile from the most
- * recent splat_point_to_point call (length = 2 * returned point count). */
+/* Pointer to the packed [distance_km, ground_m, clutter_m] profile from the
+ * most recent splat_point_to_point call (length = 3 * returned point count). */
 double *splat_p2p_profile_ptr(int handle) {
     Engine *e = get_engine(handle);
     if (!e || e->p2p_profile.empty())

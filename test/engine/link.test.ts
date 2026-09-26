@@ -116,3 +116,20 @@ describe('link grading', () => {
     expect(linkGrade({ ...clear, marginDb: FADE_MARGIN_DB })).toBe('good');
   });
 });
+
+describe('analyzeLink with clutter', () => {
+  const profile = (clutterAt: number, h: number) =>
+    flat(10).map((p, i) => ({ ...p, clutterM: i === clutterAt ? h : 0 }));
+
+  it('a canopy between the antennas blocks line of sight', () => {
+    const a = analyzeLink({ ...base, profile: profile(5, 40), txHeightM: 20, rxHeightM: 20 });
+    expect(a.losClear).toBe(false);
+    expect(a.samples[5].obstacleM).toBeGreaterThan(a.samples[5].curvedGroundM);
+  });
+
+  it('clutter reported on an endpoint is ignored (the engine never adds it there)', () => {
+    const a = analyzeLink({ ...base, profile: profile(10, 40), txHeightM: 20, rxHeightM: 20 });
+    expect(a.losClear).toBe(true);
+  });
+});
+
