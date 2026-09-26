@@ -850,7 +850,9 @@ const useStore = defineStore('store', {
       });
 
       map.addControl(new SearchControl(), 'top-left');
-      map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'bottom-left');
+      // Compass: drag it (or right-drag / two-finger twist the map) to rotate;
+      // click it to reset north-up.
+      map.addControl(new maplibregl.NavigationControl({ showCompass: true }), 'bottom-left');
       map.addControl(new maplibregl.ScaleControl({ unit: 'metric' }), 'bottom-left');
       map.addControl(
         new maplibregl.GeolocateControl({

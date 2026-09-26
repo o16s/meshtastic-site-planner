@@ -67,10 +67,12 @@ export class CanvasOverlay {
     // wide, so every handle starts out grabbable.
     const el = map.getContainer();
     const visible = el.clientWidth - drawerInset(map);
-    const mid = map.unproject([visible / 2, el.clientHeight / 2]);
-    const right = map.unproject([visible * 0.75, el.clientHeight / 2]);
-    this.center = merc(mid);
-    this.width = 2 * (merc(right).x - this.center.x);
+    // Upright on screen even when the map is rotated: take width and angle
+    // from the screen's horizontal as it lies on the map.
+    this.center = merc(map.unproject([visible / 2, el.clientHeight / 2]));
+    const half = sub(merc(map.unproject([visible * 0.75, el.clientHeight / 2])), this.center);
+    this.width = 2 * Math.hypot(half.x, half.y);
+    this.angle = Math.atan2(half.y, half.x);
 
     // Above the basemap and overlays (basemap-*, overlay-*), below coverage.
     const beforeId = (map.getStyle().layers ?? []).find(
@@ -142,7 +144,8 @@ export class CanvasOverlay {
 
   /** Mercator units per screen pixel at the current zoom. */
   private mercPerPx(): number {
-    return merc(this.map.unproject([1, 0])).x - merc(this.map.unproject([0, 0])).x;
+    const d = sub(merc(this.map.unproject([1, 0])), merc(this.map.unproject([0, 0])));
+    return Math.hypot(d.x, d.y); // rotation-independent
   }
 
   /** Push the geometry to the image source and snap every handle (except the
