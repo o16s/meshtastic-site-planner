@@ -46,6 +46,11 @@
         <button type="button" class="px-1 text-ink-muted hover:text-ink" :aria-label="`Remove receiver ${rxLabel(i)}`" @click.stop="store.removeReceiver(i)">×</button>
       </li>
     </ul>
+    <p v-if="store.receivers.length" class="mt-hint mt-1">
+      <span :style="{ color: LINK_COLORS.good }">●</span> viable ·
+      <span :style="{ color: LINK_COLORS.marginal }">●</span> works but obstructed or &lt; {{ FADE_MARGIN_DB }} dB fade margin ·
+      <span :style="{ color: LINK_COLORS.bad }">●</span> below sensitivity
+    </p>
 
     <div v-if="sel" class="mt-2 grid grid-cols-2 gap-2">
       <div>
@@ -72,16 +77,16 @@
     </div>
 
     <div v-if="a && store.linkState !== 'computing'" class="mt-3">
-      <div class="mt-link-verdict" :class="verdictClass">
-        <span class="mt-link-verdict-dot" aria-hidden="true"></span>{{ verdictText }}
+      <div class="mt-link-verdict" :style="{ color: linkColor(a) }">
+        <span class="mt-link-verdict-dot" aria-hidden="true"></span>{{ linkVerdict(a) }}
       </div>
 
       <dl class="mt-link-stats mt-2">
         <div><dt>Distance</dt><dd>{{ fmt(a.distanceKm, 2) }} km</dd></div>
         <div><dt>Received</dt><dd>{{ fmt(a.rxDbm, 1) }} dBm</dd></div>
-        <div><dt>Margin</dt><dd :class="a.marginDb >= 0 ? 'mt-pos' : 'mt-neg'">{{ a.marginDb >= 0 ? '+' : '' }}{{ fmt(a.marginDb, 1) }} dB</dd></div>
-        <div><dt>Line of sight</dt><dd :class="a.losClear ? 'mt-pos' : 'mt-neg'">{{ a.losClear ? 'Clear' : 'Blocked' }}</dd></div>
-        <div><dt>Fresnel</dt><dd :class="a.fresnelClear ? 'mt-pos' : 'mt-neg'">{{ fmt(a.fresnelClearanceFraction * 100, 0) }}% clear</dd></div>
+        <div><dt>Margin</dt><dd :style="{ color: LINK_COLORS[a.marginDb < 0 ? 'bad' : a.marginDb < FADE_MARGIN_DB ? 'marginal' : 'good'] }">{{ a.marginDb >= 0 ? '+' : '' }}{{ fmt(a.marginDb, 1) }} dB</dd></div>
+        <div><dt>Line of sight</dt><dd :style="{ color: LINK_COLORS[a.losClear ? 'good' : 'marginal'] }">{{ a.losClear ? 'Clear' : 'Blocked' }}</dd></div>
+        <div><dt>Fresnel</dt><dd :style="{ color: LINK_COLORS[a.fresnelClear ? 'good' : 'marginal'] }">{{ fmt(a.fresnelClearanceFraction * 100, 0) }}% clear</dd></div>
       </dl>
 
       <svg v-if="chart" class="mt-link-chart mt-2" :viewBox="`0 0 ${chart.W} ${chart.H}`" preserveAspectRatio="none"
@@ -107,7 +112,7 @@
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue';
 import { useStore } from '../store.ts';
-import { linkColor } from '../engine/link.ts';
+import { FADE_MARGIN_DB, LINK_COLORS, linkColor, linkVerdict } from '../engine/link.ts';
 import { importShapefileZip } from '../import/shapefile.ts';
 
 const store = useStore();
@@ -157,23 +162,6 @@ function applyCoords() {
 const fmt = (n: number, d: number) => (Number.isFinite(n) ? n.toFixed(d) : '–');
 
 const rayColor = computed(() => linkColor(a.value));
-
-const verdictClass = computed(() => {
-  const l = a.value;
-  if (!l) return '';
-  if (l.marginDb >= 0 && l.losClear && l.fresnelClear) return 'mt-verdict-good';
-  if (l.marginDb >= 0 && l.losClear) return 'mt-verdict-marginal';
-  return 'mt-verdict-bad';
-});
-
-const verdictText = computed(() => {
-  const l = a.value;
-  if (!l) return '';
-  if (l.marginDb < 0) return 'Link unlikely (below sensitivity)';
-  if (!l.losClear) return 'Link blocked (no line of sight)';
-  if (!l.fresnelClear) return 'Link marginal (Fresnel obstructed)';
-  return 'Link looks viable';
-});
 
 /* Profile chart geometry: terrain (curvature-adjusted), the line-of-sight ray,
    and the bottom of the first Fresnel zone, scaled into a fixed viewBox. */

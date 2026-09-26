@@ -601,6 +601,8 @@ body {
 }
 
 .mt-link-verdict {
+  /* Text colour is the link grade (set inline); the tint follows it. */
+  background: color-mix(in srgb, currentColor 14%, transparent);
   display: flex;
   align-items: center;
   gap: 0.5rem;
@@ -616,21 +618,6 @@ body {
   border-radius: 50%;
   background: currentColor;
   flex: 0 0 auto;
-}
-
-.mt-verdict-good {
-  background: rgba(255, 191, 0, 0.14);
-  color: var(--mt-primary);
-}
-
-.mt-verdict-marginal {
-  background: rgba(245, 197, 24, 0.14);
-  color: #f5c518;
-}
-
-.mt-verdict-bad {
-  background: rgba(255, 92, 92, 0.14);
-  color: var(--mt-error);
 }
 
 .mt-link-stats {
@@ -657,14 +644,6 @@ body {
 .mt-link-stats dd {
   margin: 0;
   font-variant-numeric: tabular-nums;
-}
-
-.mt-pos {
-  color: var(--mt-primary);
-}
-
-.mt-neg {
-  color: var(--mt-error);
 }
 
 .mt-link-chart {

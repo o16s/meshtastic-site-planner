@@ -119,11 +119,38 @@ export function analyzeLink(input: LinkAnalysisInput): LinkAnalysis {
   };
 }
 
-/** Map/chart color for a link: green viable, yellow marginal (Fresnel
- * obstructed), red below sensitivity, grey not computed yet. */
+/** Links that close by less than this are shaky in practice (fading,
+ * interference, seasonal foliage), so they grade as marginal. */
+export const FADE_MARGIN_DB = 10;
+
+/** One grading for every place a link is shown (map line, list dot, verdict,
+ * profile ray). Margin comes from ITM, which already includes terrain
+ * diffraction, so an obstructed path with positive margin is "possible". */
+export type LinkGrade = 'none' | 'good' | 'marginal' | 'bad';
+
+export const LINK_COLORS: Record<LinkGrade, string> = {
+  none: '#9aa0aa',
+  good: '#67ea94',
+  marginal: '#f5c518',
+  bad: '#ff5c5c',
+};
+
+export function linkGrade(a: LinkAnalysis | null | undefined): LinkGrade {
+  if (!a) return 'none';
+  if (a.marginDb < 0) return 'bad';
+  if (!a.fresnelClear || a.marginDb < FADE_MARGIN_DB) return 'marginal'; // no LOS is never Fresnel-clear
+  return 'good';
+}
+
 export function linkColor(a: LinkAnalysis | null | undefined): string {
-  if (!a) return '#9aa0aa';
-  if (a.marginDb >= 0 && a.fresnelClear) return '#67ea94';
-  if (a.marginDb >= 0) return '#f5c518';
-  return '#ff5c5c';
+  return LINK_COLORS[linkGrade(a)];
+}
+
+export function linkVerdict(a: LinkAnalysis | null | undefined): string {
+  if (!a) return '';
+  if (a.marginDb < 0) return 'No link: below sensitivity';
+  if (!a.losClear) return 'Link possible, no line of sight (diffraction)';
+  if (!a.fresnelClear) return 'Link possible, Fresnel zone obstructed';
+  if (a.marginDb < FADE_MARGIN_DB) return `Link possible, low fade margin (< ${FADE_MARGIN_DB} dB)`;
+  return 'Link looks viable';
 }

@@ -1,6 +1,15 @@
 import { describe, it, expect } from 'vitest';
 
-import { analyzeLink, linkColor, FRESNEL_CLEAR_FRACTION, type LinkAnalysisInput } from '../../src/engine/link';
+import {
+  analyzeLink,
+  linkColor,
+  linkGrade,
+  linkVerdict,
+  FADE_MARGIN_DB,
+  FRESNEL_CLEAR_FRACTION,
+  LINK_COLORS,
+  type LinkAnalysisInput,
+} from '../../src/engine/link';
 import type { LinkProfilePoint } from '../../src/engine/core';
 
 /** Flat ground profile from 0..distKm at 1 km steps, all at `groundM`. */
@@ -86,12 +95,24 @@ describe('analyzeLink', () => {
   });
 });
 
-describe('linkColor', () => {
-  it('grades links green / yellow / red, grey when not computed', () => {
-    expect(linkColor(null)).toBe('#9aa0aa');
-    const clear = analyzeLink({ ...base, profile: flat(5), txHeightM: 30, rxHeightM: 30 });
-    expect(linkColor(clear)).toBe('#67ea94');
-    expect(linkColor({ ...clear, fresnelClear: false })).toBe('#f5c518');
-    expect(linkColor({ ...clear, marginDb: -1 })).toBe('#ff5c5c');
+describe('link grading', () => {
+  const clear = analyzeLink({ ...base, profile: flat(5), txHeightM: 30, rxHeightM: 30 }); // LOS + Fresnel clear
+  const cases: [string, Parameters<typeof linkGrade>[0], string, RegExp][] = [
+    ['not computed', null, 'none', /^$/],
+    ['below sensitivity', { ...clear, marginDb: -1 }, 'bad', /No link/],
+    ['clear path, low fade margin', { ...clear, marginDb: 5 }, 'marginal', /low fade margin/],
+    ['no line of sight, positive margin', { ...clear, marginDb: 20, losClear: false, fresnelClear: false }, 'marginal', /no line of sight/],
+    ['Fresnel obstructed', { ...clear, marginDb: 20, fresnelClear: false }, 'marginal', /Fresnel/],
+    ['clear path, >= 10 dB', { ...clear, marginDb: 20 }, 'good', /viable/],
+  ];
+  it.each(cases)('%s', (_name, a, grade, text) => {
+    expect(linkGrade(a)).toBe(grade);
+    expect(linkColor(a)).toBe(LINK_COLORS[grade as keyof typeof LINK_COLORS]);
+    expect(linkVerdict(a)).toMatch(text);
+  });
+
+  it('puts the fade-margin boundary at exactly FADE_MARGIN_DB', () => {
+    expect(linkGrade({ ...clear, marginDb: FADE_MARGIN_DB - 0.01 })).toBe('marginal');
+    expect(linkGrade({ ...clear, marginDb: FADE_MARGIN_DB })).toBe('good');
   });
 });
