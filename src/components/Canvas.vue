@@ -42,6 +42,20 @@
         />
         Lock position (hide handles)
       </label>
+
+      <button
+        type="button"
+        class="mt-btn mt-btn-sm mt-3 w-full"
+        :class="store.calibrating ? 'mt-btn-secondary' : 'mt-btn-primary'"
+        title="Click 3 features on the image and the same 3 on the map; the image is scaled, rotated and moved to fit."
+        @click="store.calibrating ? store.cancelCalibration() : store.startCalibration()"
+      >
+        {{ store.calibrating ? 'Cancel calibration (Esc)' : 'Calibrate with 3 points' }}
+      </button>
+      <p v-if="store.calibStatus" class="mt-hint mt-1" role="status">{{ store.calibStatus }}</p>
+      <p v-if="store.calibrating" class="mt-hint mt-1">
+        Tip: lower the opacity to see the map through the image.
+      </p>
     </template>
   </div>
 </template>

@@ -41,6 +41,37 @@ export function scaleFromCorner(anchor: V, pointer: V, i: number, angle: number,
   return { center: add(anchor, half), width };
 }
 
+/** Least-squares similarity fit (scale + rotation + translation, no shear, so
+ * the image keeps its proportions) taking image-frame points onto world
+ * points. Image points are in image-width units from the image center, so the
+ * result is the canvas geometry directly: the image center lands at `center`,
+ * width = scale, angle = rotation. Closed form with complex numbers: the
+ * transform is w = a*i + t, a = sum((w-w_mean)*conj(i-i_mean)) / sum(|i-i_mean|^2). */
+export function fitSimilarity(img: V[], world: V[]): { center: V; width: number; angle: number; residuals: number[] } {
+  const n = img.length;
+  const mean = (ps: V[]) => ({ x: ps.reduce((s, p) => s + p.x, 0) / n, y: ps.reduce((s, p) => s + p.y, 0) / n });
+  const mi = mean(img);
+  const mw = mean(world);
+  let re = 0;
+  let im = 0;
+  let den = 0;
+  for (let k = 0; k < n; k++) {
+    const i = sub(img[k], mi);
+    const w = sub(world[k], mw);
+    re += w.x * i.x + w.y * i.y; // Re(w * conj(i))
+    im += w.y * i.x - w.x * i.y; // Im(w * conj(i))
+    den += i.x * i.x + i.y * i.y;
+  }
+  const a = { x: re / den, y: im / den };
+  const apply = (i: V): V => ({ x: a.x * i.x - a.y * i.y, y: a.x * i.y + a.y * i.x });
+  const center = sub(mw, apply(mi)); // t, where the image center (i = 0) lands
+  const residuals = img.map((i, k) => {
+    const d = sub(add(apply(i), center), world[k]);
+    return Math.hypot(d.x, d.y);
+  });
+  return { center, width: Math.hypot(a.x, a.y), angle: Math.atan2(a.y, a.x), residuals };
+}
+
 /** Width of the open parameters drawer overlaying the map's right edge, or 0
  * when it is closed or covers most of the map (phones). */
 export function drawerInset(map: maplibregl.Map): number {
@@ -129,6 +160,21 @@ export class CanvasOverlay {
     this.update();
   }
 
+  /** A map point in the image's own frame, in image-width units from its center. */
+  toImage(ll: maplibregl.LngLatLike): V {
+    const d = rot(sub(merc(ll), this.center), -this.angle);
+    return { x: d.x / this.width, y: d.y / this.width };
+  }
+
+  /** Place the image at a fitted geometry (see fitSimilarity). */
+  applyFit(f: { center: V; width: number; angle: number }) {
+    this.center = f.center;
+    this.width = f.width;
+    this.angle = f.angle;
+    this.update();
+    this.onChange?.(this.geom());
+  }
+
   geom(): CanvasGeom {
     return { center: { x: this.center.x, y: this.center.y }, width: this.width, angle: this.angle };
   }
@@ -177,5 +223,61 @@ export class CanvasOverlay {
     if (skip !== this.mover) this.mover.setLngLat(lnglat(this.center));
     const h = this.width / this.aspect;
     this.rotator.setLngLat(lnglat(add(this.center, rot({ x: 0, y: -(h / 2) * 1.25 }, this.angle))));
+  }
+}
+
+/** Three-point calibration: alternately click a feature on the canvas image and
+ * the same feature on the map; after the third pair the image is fitted
+ * (fitSimilarity) and the per-point misfit is reported in metres. */
+export class CanvasCalibration {
+  static readonly PAIRS = 3;
+  private readonly img: V[] = [];
+  private readonly world: V[] = [];
+  private readonly markers: maplibregl.Marker[] = [];
+
+  constructor(
+    private readonly map: maplibregl.Map,
+    private readonly overlay: CanvasOverlay,
+    private readonly onStatus: (message: string, done: boolean) => void
+  ) {
+    map.on('click', this.click);
+    map.getCanvas().style.cursor = 'crosshair';
+    this.report();
+  }
+
+  cancel() {
+    this.map.off('click', this.click);
+    this.map.getCanvas().style.cursor = '';
+    this.markers.forEach((m) => m.remove());
+  }
+
+  private readonly click = (e: maplibregl.MapMouseEvent) => {
+    const onImage = this.img.length === this.world.length;
+    if (onImage) this.img.push(this.overlay.toImage(e.lngLat));
+    else this.world.push(merc(e.lngLat));
+    const el = document.createElement('div');
+    el.className = `mt-calib-pt ${onImage ? 'mt-calib-img' : 'mt-calib-world'}`;
+    el.textContent = String(this.world.length + (onImage ? 1 : 0));
+    this.markers.push(new maplibregl.Marker({ element: el }).setLngLat(e.lngLat).addTo(this.map));
+    if (this.world.length < CanvasCalibration.PAIRS) return this.report();
+
+    const fit = fitSimilarity(this.img, this.world);
+    this.overlay.applyFit(fit);
+    this.cancel();
+    const metres = fit.residuals.map((r, k) => {
+      const at = new maplibregl.MercatorCoordinate(this.world[k].x, this.world[k].y);
+      return Math.round(r / at.meterInMercatorCoordinateUnits());
+    });
+    this.onStatus(`Fitted. Point misfit: ${metres.map((m, k) => `#${k + 1} ${m} m`).join(', ')}.`, true);
+  };
+
+  private report() {
+    const n = this.world.length + 1;
+    this.onStatus(
+      this.img.length === this.world.length
+        ? `Point ${n} of ${CanvasCalibration.PAIRS}: click a feature on the image.`
+        : `Point ${n} of ${CanvasCalibration.PAIRS}: now click the same feature on the map.`,
+      false
+    );
   }
 }

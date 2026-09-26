@@ -8,7 +8,7 @@ import { draftPinElement, sitePinElement, targetPinElement } from './layers.ts';
 import { BASEMAPS, DEFAULT_BASEMAP, applyBasemap, emptyStyle, setHillshade, setSigfox } from './map/styles.ts';
 import { BasemapControl, ExportControl, MeasureControl } from './map/controls.ts';
 import { SearchControl } from './map/search.ts';
-import { CanvasOverlay, drawerInset } from './map/canvas.ts';
+import { CanvasCalibration, CanvasOverlay, drawerInset } from './map/canvas.ts';
 import { coverageImage, cropToRadius } from './map/overlay.ts';
 import { coverageContours } from './map/contours.ts';
 import { canShareFiles, exportGeoJSON, exportKml, exportPngWorldFile, postCoverageToBridge, shareGeoJSON } from './map/export.ts';
@@ -63,6 +63,8 @@ let measureEscHandler: ((e: KeyboardEvent) => void) | undefined;
 // Canvas: one user image overlay + its blob URL.
 let canvas: CanvasOverlay | undefined;
 let canvasUrl: string | undefined;
+let calibration: CanvasCalibration | undefined;
+let calibEscHandler: ((e: KeyboardEvent) => void) | undefined;
 let measureA: { lat: number; lon: number } | null = null;
 const MEASURE_SRC = 'mt-measure';
 
@@ -269,6 +271,9 @@ const useStore = defineStore('store', {
       canvasOpacity: workspace.canvas?.opacity ?? 60,
       canvasLocked: workspace.canvas?.locked ?? false,
       canvasGeom: (workspace.canvas?.geom ?? null) as CanvasGeom | null,
+      /** Three-point canvas calibration: running flag + step/result text. */
+      calibrating: false,
+      calibStatus: '',
     }
   },
   actions: {
@@ -312,6 +317,7 @@ const useStore = defineStore('store', {
         this.cancelPlaceOnMap();
         return;
       }
+      this.cancelCalibration();
       this.placingMode = true;
       map.getCanvas().style.cursor = 'crosshair';
       placeClickHandler = (e: maplibregl.MapMouseEvent) => {
@@ -348,6 +354,7 @@ const useStore = defineStore('store', {
         return;
       }
       this.cancelPlaceOnMap(); // never arm both at once
+      this.cancelCalibration();
       this.linkState = 'placing';
       map.getCanvas().style.cursor = 'crosshair';
       linkClickHandler = (e: maplibregl.MapMouseEvent) => {
@@ -660,7 +667,32 @@ const useStore = defineStore('store', {
       this.canvasLocked = on;
       canvas?.setLocked(on);
     },
+    /** Start (or restart) three-point calibration of the canvas. */
+    startCalibration() {
+      if (!map || !canvas) return;
+      this.cancelCalibration();
+      this.cancelPlaceOnMap(); // one click mode at a time
+      this.cancelPlaceTarget();
+      this.endMeasure();
+      this.calibrating = true;
+      calibration = new CanvasCalibration(map, canvas, (message, done) => {
+        this.calibStatus = message;
+        if (done) this.cancelCalibration(true);
+      });
+      calibEscHandler = (e) => e.key === 'Escape' && this.cancelCalibration();
+      window.addEventListener('keydown', calibEscHandler);
+    },
+    /** Stop calibrating; keep the status text only when a fit just finished. */
+    cancelCalibration(keepStatus = false) {
+      calibration?.cancel();
+      calibration = undefined;
+      if (calibEscHandler) window.removeEventListener('keydown', calibEscHandler);
+      calibEscHandler = undefined;
+      this.calibrating = false;
+      if (!keepStatus) this.calibStatus = '';
+    },
     removeCanvas() {
+      this.cancelCalibration();
       canvas?.remove();
       canvas = undefined;
       if (canvasUrl) URL.revokeObjectURL(canvasUrl);
@@ -680,6 +712,7 @@ const useStore = defineStore('store', {
       }
       this.cancelPlaceOnMap();
       this.cancelPlaceTarget();
+      this.cancelCalibration();
       this.measureMode = true;
       this.measureResult = null;
       measureA = null;

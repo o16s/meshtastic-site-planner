@@ -550,6 +550,21 @@ body {
 .mt-canvas-move { border-radius: 50%; cursor: move; }
 .mt-canvas-rotate { border-radius: 50%; cursor: grab; background: var(--mt-on-primary); border-color: var(--mt-primary); }
 
+/* Three-point calibration markers: amber = image point, blue = map point. */
+.mt-calib-pt {
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  font-size: 11px;
+  font-weight: 700;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.5);
+  pointer-events: none;
+}
+.mt-calib-img { background: var(--mt-primary); color: var(--mt-on-primary); }
+.mt-calib-world { background: #3aa0ff; color: #0f1017; }
+
 /* ---------- Map: popups ---------- */
 
 .maplibregl-popup-content {
