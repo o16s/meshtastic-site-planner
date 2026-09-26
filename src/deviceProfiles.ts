@@ -33,4 +33,9 @@ export const DEVICE_PROFILES: DeviceProfile[] = [
   { label: 'RAK WisBlock (RAK4631)', tx_power: 0.158, tx_gain: 2 }, // SX1262, 22 dBm
   { label: 'Station G2', tx_power: 1.0, tx_gain: 3 }, // SX1262 + PA, ~30 dBm
   { label: 'Seeed SenseCAP T1000-E', tx_power: 0.158, tx_gain: 1 }, // SX1262, 22 dBm, PCB antenna
+  // SJI LSM100A (STM32WLE5, low-power PA): datasheet "up to +15 dBm", typ.
+  // 14 dBm at EU868 / 13 dBm at AS923; 915 MHz is in its 863-928 MHz range
+  // but not a characterised/certified band (the LSM110A is the +22 dBm part).
+  // Gain = 2 dBi 1/4-wave RP-SMA antenna minus ~0.5 dB for the u.fl pigtail.
+  { label: 'SJI LSM100A + u.fl pigtail + 915 MHz ¼-wave 2 dBi RP-SMA', tx_power: 0.025, tx_gain: 1.5 }, // 14 dBm
 ];
