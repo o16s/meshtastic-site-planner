@@ -8,7 +8,7 @@ import { draftPinElement, sitePinElement, targetPinElement } from './layers.ts';
 import { BASEMAPS, DEFAULT_BASEMAP, applyBasemap, emptyStyle, setHillshade, setSigfox } from './map/styles.ts';
 import { BasemapControl, ExportControl, MeasureControl } from './map/controls.ts';
 import { SearchControl } from './map/search.ts';
-import { CanvasOverlay } from './map/canvas.ts';
+import { CanvasOverlay, drawerInset } from './map/canvas.ts';
 import { coverageImage, cropToRadius } from './map/overlay.ts';
 import { coverageContours } from './map/contours.ts';
 import { canShareFiles, exportGeoJSON, exportKml, exportPngWorldFile, postCoverageToBridge, shareGeoJSON } from './map/export.ts';
@@ -373,11 +373,8 @@ const useStore = defineStore('store', {
       this.setTxCoords(lat, lon);
       this.setDraftMarker(lat, lon);
       if (map) {
-        // Keep the points clear of the open parameters drawer (it overlays the
-        // map's right edge) unless it covers most of the map, as on phones.
-        const drawer = document.querySelector('aside[aria-label="Site parameters"][aria-hidden="false"]');
-        const dw = drawer?.getBoundingClientRect().width ?? 0;
-        const right = dw < map.getContainer().clientWidth / 2 ? dw + 60 : 60;
+        // Keep the points clear of the open parameters drawer.
+        const right = drawerInset(map) + 60;
         map.fitBounds([[w, s], [e, n]], { padding: { top: 170, bottom: 90, left: 60, right }, maxZoom: 15, duration: 0 });
       }
       this.drawLink();

@@ -2,7 +2,8 @@
   <div>
     <p class="mt-hint mb-3">
       Lay an image (site plan, scanned map, drawing) over the map. Drag a corner
-      to scale it (ratio stays locked), the center dot to move it.
+      to scale it (ratio stays locked), the center dot to move it, the dot above
+      the top edge to rotate it.
     </p>
 
     <div class="flex gap-2">

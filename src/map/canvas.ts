@@ -1,92 +1,114 @@
 /* "Canvas": a user image (PNG/JPG) laid over the map as a MapLibre image
  * source pinned by 4 corners, with draggable handles to scale it (aspect
- * locked, opposite corner fixed) and move it. Scaling is done in screen
- * pixels: Web Mercator is linear there, so the image never distorts. */
+ * locked, opposite corner fixed), rotate it, and move it.
+ *
+ * The image is modelled as center + width + angle in Web Mercator units
+ * (MercatorCoordinate: linear, zoom-independent, y grows southward like
+ * screen y), and the 4 corners are derived from that, so it never distorts. */
 
 import maplibregl from 'maplibre-gl';
 
-export interface Pt {
+export interface V {
   x: number;
   y: number;
 }
 
-const MIN_WIDTH_PX = 20;
+const add = (a: V, b: V): V => ({ x: a.x + b.x, y: a.y + b.y });
+const sub = (a: V, b: V): V => ({ x: a.x - b.x, y: a.y - b.y });
+const rot = (v: V, a: number): V => ({
+  x: v.x * Math.cos(a) - v.y * Math.sin(a),
+  y: v.x * Math.sin(a) + v.y * Math.cos(a),
+});
 
-/** Screen rect [tl, tr, br, bl] spanned from a fixed corner towards the drag
- * point, with width/height = aspect. The larger of the two drag extents wins. */
-export function fitRect(anchor: Pt, drag: Pt, aspect: number): [Pt, Pt, Pt, Pt] {
-  const dx = drag.x - anchor.x;
-  const dy = drag.y - anchor.y;
-  const w = Math.max(Math.abs(dx), Math.abs(dy) * aspect, MIN_WIDTH_PX);
-  const h = w / aspect;
-  const ox = anchor.x + (dx < 0 ? -w : w);
-  const oy = anchor.y + (dy < 0 ? -h : h);
-  const [x0, x1] = [Math.min(anchor.x, ox), Math.max(anchor.x, ox)];
-  const [y0, y1] = [Math.min(anchor.y, oy), Math.max(anchor.y, oy)];
-  return [
-    { x: x0, y: y0 },
-    { x: x1, y: y0 },
-    { x: x1, y: y1 },
-    { x: x0, y: y1 },
-  ];
+/** Corner directions in the image's own frame: TL, TR, BR, BL (MapLibre's order). */
+const SIGNS: [number, number][] = [[-1, -1], [1, -1], [1, 1], [-1, 1]];
+
+/** Corners of a rect with the given center, width, aspect (w/h) and angle. */
+export function cornersOf(center: V, width: number, aspect: number, angle: number): V[] {
+  const h = width / aspect;
+  return SIGNS.map(([sx, sy]) => add(center, rot({ x: (sx * width) / 2, y: (sy * h) / 2 }, angle)));
+}
+
+/** Scale by dragging corner `i` while the opposite corner (`anchor`) stays
+ * fixed: the drag is measured in the image's frame, the larger extent wins,
+ * and the aspect ratio is kept. Never flips or shrinks below `minWidth`. */
+export function scaleFromCorner(anchor: V, pointer: V, i: number, angle: number, aspect: number, minWidth: number) {
+  const [sx, sy] = SIGNS[i];
+  const d = rot(sub(pointer, anchor), -angle);
+  const width = Math.max(sx * d.x, sy * d.y * aspect, minWidth);
+  const half = rot({ x: (sx * width) / 2, y: (sy * width) / aspect / 2 }, angle);
+  return { center: add(anchor, half), width };
+}
+
+/** Width of the open parameters drawer overlaying the map's right edge, or 0
+ * when it is closed or covers most of the map (phones). */
+export function drawerInset(map: maplibregl.Map): number {
+  const drawer = document.querySelector('aside[aria-label="Site parameters"][aria-hidden="false"]');
+  const w = drawer?.getBoundingClientRect().width ?? 0;
+  return w < map.getContainer().clientWidth / 2 ? w : 0;
 }
 
 const ID = 'overlay-canvas';
-type Corners = [[number, number], [number, number], [number, number], [number, number]];
+const merc = (ll: maplibregl.LngLatLike): V => maplibregl.MercatorCoordinate.fromLngLat(ll);
+const lnglat = (v: V): [number, number] => new maplibregl.MercatorCoordinate(v.x, v.y).toLngLat().toArray() as [number, number];
 
 export class CanvasOverlay {
-  private corners: Corners;
-  private handles: maplibregl.Marker[] = [];
+  private center: V;
+  private width: number;
+  private angle = 0;
   private readonly aspect: number;
+  private readonly corners: maplibregl.Marker[] = [];
+  private readonly mover: maplibregl.Marker;
+  private readonly rotator: maplibregl.Marker;
 
-  constructor(private readonly map: maplibregl.Map, url: string, width: number, height: number) {
-    this.aspect = width / height;
-    // Centered in the view, half the visible map width wide.
-    const c = map.project(map.getCenter());
-    const w = map.getContainer().clientWidth / 2;
-    const h = w / this.aspect;
-    this.corners = this.toLngLat(fitRect({ x: c.x - w / 2, y: c.y - h / 2 }, { x: c.x + w / 2, y: c.y + h / 2 }, this.aspect));
+  constructor(private readonly map: maplibregl.Map, url: string, imgWidth: number, imgHeight: number) {
+    this.aspect = imgWidth / imgHeight;
+    // Centered in the part of the map the drawer doesn't cover, half its width
+    // wide, so every handle starts out grabbable.
+    const el = map.getContainer();
+    const visible = el.clientWidth - drawerInset(map);
+    const mid = map.unproject([visible / 2, el.clientHeight / 2]);
+    const right = map.unproject([visible * 0.75, el.clientHeight / 2]);
+    this.center = merc(mid);
+    this.width = 2 * (merc(right).x - this.center.x);
 
     // Above the basemap and overlays (basemap-*, overlay-*), below coverage.
     const beforeId = (map.getStyle().layers ?? []).find(
       (l) => !l.id.startsWith('basemap-') && !l.id.startsWith('overlay-')
     )?.id;
-    map.addSource(ID, { type: 'image', url, coordinates: this.corners });
+    map.addSource(ID, { type: 'image', url, coordinates: this.coords() });
     map.addLayer({ id: ID, type: 'raster', source: ID, paint: { 'raster-opacity': 0.6 } }, beforeId);
 
-    // Corner handles: scale around the opposite corner, captured at drag start
-    // (a drag can flip the rect, which reorders the corners).
-    this.corners.forEach((_, i) => {
-      const el = document.createElement('div');
-      el.className = `mt-canvas-handle ${i % 2 ? 'mt-canvas-nesw' : 'mt-canvas-nwse'}`;
-      const m = new maplibregl.Marker({ element: el, draggable: true }).setLngLat(this.corners[i]).addTo(map);
-      let anchor: Pt;
-      m.on('dragstart', () => (anchor = map.project(this.corners[(i + 2) % 4])));
+    // Corner handles: scale around the opposite corner, captured at drag start.
+    for (let i = 0; i < 4; i++) {
+      const m = this.handle(`mt-canvas-handle ${i % 2 ? 'mt-canvas-nesw' : 'mt-canvas-nwse'}`, 'Drag to scale');
+      let anchor: V;
+      let minWidth: number;
+      m.on('dragstart', () => {
+        anchor = cornersOf(this.center, this.width, this.aspect, this.angle)[(i + 2) % 4];
+        minWidth = 20 * this.mercPerPx();
+      });
       m.on('drag', () => {
-        this.corners = this.toLngLat(fitRect(anchor, map.project(m.getLngLat()), this.aspect));
+        const s = scaleFromCorner(anchor, merc(m.getLngLat()), i, this.angle, this.aspect, minWidth);
+        this.center = s.center;
+        this.width = s.width;
         this.update();
       });
-      m.on('dragend', () => this.update()); // snap the handle onto its corner
-      this.handles.push(m);
+      this.corners.push(m);
+    }
+    // Center handle moves the image; the rotate handle above the top edge turns it.
+    this.mover = this.handle('mt-canvas-move', 'Drag to move');
+    this.mover.on('drag', () => {
+      this.center = merc(this.mover.getLngLat());
+      this.update(this.mover);
     });
-
-    // Center handle: move the whole image by the pixel delta.
-    const el = document.createElement('div');
-    el.className = 'mt-canvas-move';
-    el.title = 'Drag to move the canvas';
-    const mv = new maplibregl.Marker({ element: el, draggable: true }).setLngLat(this.center()).addTo(map);
-    // Measure from the image center, not the marker at dragstart: MapLibre
-    // fires dragstart after the click tolerance, when the marker has moved.
-    let start: { at: Pt; px: Pt[] };
-    mv.on('dragstart', () => (start = { at: map.project(this.center()), px: this.corners.map((p) => map.project(p)) }));
-    mv.on('dragend', () => this.update());
-    mv.on('drag', () => {
-      const now = map.project(mv.getLngLat());
-      const [dx, dy] = [now.x - start.at.x, now.y - start.at.y];
-      this.corners = this.toLngLat(start.px.map((p) => ({ x: p.x + dx, y: p.y + dy })) as [Pt, Pt, Pt, Pt]);
-      this.update(mv);
+    this.rotator = this.handle('mt-canvas-rotate', 'Drag to rotate');
+    this.rotator.on('drag', () => {
+      const d = sub(merc(this.rotator.getLngLat()), this.center);
+      this.angle = Math.atan2(d.x, -d.y); // 0 = handle straight above the center
+      this.update();
     });
-    this.handles.push(mv);
+    this.update();
   }
 
   setOpacity(v: number) {
@@ -94,27 +116,43 @@ export class CanvasOverlay {
   }
 
   setLocked(locked: boolean) {
-    for (const h of this.handles) h.getElement().style.display = locked ? 'none' : '';
+    for (const h of this.handles()) h.getElement().style.display = locked ? 'none' : '';
   }
 
   remove() {
-    this.handles.forEach((h) => h.remove());
+    this.handles().forEach((h) => h.remove());
     if (this.map.getLayer(ID)) this.map.removeLayer(ID);
     if (this.map.getSource(ID)) this.map.removeSource(ID);
   }
 
+  private handles() {
+    return [...this.corners, this.mover, this.rotator];
+  }
+
+  private handle(className: string, title: string): maplibregl.Marker {
+    const el = document.createElement('div');
+    el.className = className;
+    el.title = title;
+    return new maplibregl.Marker({ element: el, draggable: true }).setLngLat(lnglat(this.center)).addTo(this.map);
+  }
+
+  private coords(): [[number, number], [number, number], [number, number], [number, number]] {
+    return cornersOf(this.center, this.width, this.aspect, this.angle).map(lnglat) as never;
+  }
+
+  /** Mercator units per screen pixel at the current zoom. */
+  private mercPerPx(): number {
+    return merc(this.map.unproject([1, 0])).x - merc(this.map.unproject([0, 0])).x;
+  }
+
+  /** Push the geometry to the image source and snap every handle (except the
+   * one being dragged freely) onto it. */
   private update(skip?: maplibregl.Marker) {
-    (this.map.getSource(ID) as maplibregl.ImageSource | undefined)?.setCoordinates(this.corners);
-    this.corners.forEach((p, i) => this.handles[i].setLngLat(p));
-    if (skip !== this.handles[4]) this.handles[4]?.setLngLat(this.center());
-  }
-
-  private center(): [number, number] {
-    const [tl, , br] = this.corners.map((p) => this.map.project(p));
-    return this.map.unproject([(tl.x + br.x) / 2, (tl.y + br.y) / 2]).toArray() as [number, number];
-  }
-
-  private toLngLat(px: Pt[]): Corners {
-    return px.map((p) => this.map.unproject([p.x, p.y]).toArray()) as Corners;
+    const coords = this.coords();
+    (this.map.getSource(ID) as maplibregl.ImageSource | undefined)?.setCoordinates(coords);
+    coords.forEach((p, i) => this.corners[i].setLngLat(p));
+    if (skip !== this.mover) this.mover.setLngLat(lnglat(this.center));
+    const h = this.width / this.aspect;
+    this.rotator.setLngLat(lnglat(add(this.center, rot({ x: 0, y: -(h / 2) * 1.25 }, this.angle))));
   }
 }

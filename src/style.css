@@ -536,7 +536,8 @@ body {
 /* ---------- Map: canvas (image overlay) handles ---------- */
 
 .mt-canvas-handle,
-.mt-canvas-move {
+.mt-canvas-move,
+.mt-canvas-rotate {
   width: 14px;
   height: 14px;
   background: var(--mt-primary);
@@ -547,6 +548,7 @@ body {
 .mt-canvas-nwse { cursor: nwse-resize; }
 .mt-canvas-nesw { cursor: nesw-resize; }
 .mt-canvas-move { border-radius: 50%; cursor: move; }
+.mt-canvas-rotate { border-radius: 50%; cursor: grab; background: var(--mt-on-primary); border-color: var(--mt-primary); }
 
 /* ---------- Map: popups ---------- */
 
