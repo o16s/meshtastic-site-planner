@@ -48,3 +48,97 @@ export function saveParams(params: SplatParams): void {
     /* ignore: quota exceeded or storage disabled */
   }
 }
+
+/* ---- Workspace: point-to-point receivers + the Canvas image overlay ----
+ * Small state (receiver positions, canvas settings and geometry) lives in
+ * localStorage next to the params. The canvas image itself goes to IndexedDB
+ * as a Blob: localStorage caps at ~5 MB of text, which a scanned site plan
+ * (base64-inflated by a third) easily exceeds. */
+
+export const WORKSPACE_KEY = 'mt-workspace-v1';
+
+/** Canvas placement in Web Mercator units (see src/map/canvas.ts). */
+export interface CanvasGeom {
+  center: { x: number; y: number };
+  width: number;
+  angle: number;
+}
+
+export interface Workspace {
+  receivers: { lat: number; lon: number; name?: string }[];
+  canvas: { name: string; opacity: number; locked: boolean; geom: CanvasGeom | null } | null;
+}
+
+const isNum = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
+
+/** Validate a stored workspace, dropping anything malformed. */
+export function parseWorkspace(saved: unknown): Workspace {
+  const s = (saved && typeof saved === 'object' ? saved : {}) as Record<string, unknown>;
+  const receivers = (Array.isArray(s.receivers) ? s.receivers : [])
+    .filter((r): r is { lat: number; lon: number; name?: unknown } => !!r && isNum(r.lat) && isNum(r.lon))
+    .map((r) => ({ lat: r.lat, lon: r.lon, ...(typeof r.name === 'string' ? { name: r.name } : {}) }));
+  const c = s.canvas as Record<string, unknown> | null | undefined;
+  const g = c?.geom as Record<string, unknown> | null | undefined;
+  const center = g?.center as Record<string, unknown> | undefined;
+  const geom =
+    g && center && isNum(center.x) && isNum(center.y) && isNum(g.width) && g.width > 0 && isNum(g.angle)
+      ? { center: { x: center.x, y: center.y }, width: g.width, angle: g.angle }
+      : null;
+  const canvas =
+    c && typeof c.name === 'string' && c.name
+      ? {
+          name: c.name,
+          opacity: isNum(c.opacity) ? Math.min(100, Math.max(0, c.opacity)) : 60,
+          locked: c.locked === true,
+          geom,
+        }
+      : null;
+  return { receivers, canvas };
+}
+
+export function loadWorkspace(): Workspace {
+  try {
+    return parseWorkspace(JSON.parse(localStorage.getItem(WORKSPACE_KEY) ?? 'null'));
+  } catch {
+    return parseWorkspace(null);
+  }
+}
+
+export function saveWorkspace(w: Workspace): void {
+  try {
+    localStorage.setItem(WORKSPACE_KEY, JSON.stringify(w));
+  } catch {
+    /* ignore: quota exceeded or storage disabled */
+  }
+}
+
+/** One Blob slot in IndexedDB for the canvas image. */
+function withImageStore<T>(mode: IDBTransactionMode, fn: (s: IDBObjectStore) => IDBRequest<T>): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const open = indexedDB.open('mt-canvas', 1);
+    open.onupgradeneeded = () => open.result.createObjectStore('image');
+    open.onerror = () => reject(open.error);
+    open.onsuccess = () => {
+      const req = fn(open.result.transaction('image', mode).objectStore('image'));
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error);
+    };
+  });
+}
+
+/** Store (or with null, delete) the canvas image; never throws. */
+export async function saveCanvasImage(blob: Blob | null): Promise<void> {
+  try {
+    await withImageStore<unknown>('readwrite', (s) => (blob ? s.put(blob, 'current') : s.delete('current')) as IDBRequest<unknown>);
+  } catch {
+    /* ignore: IndexedDB unavailable (e.g. some private modes) */
+  }
+}
+
+export async function loadCanvasImage(): Promise<Blob | null> {
+  try {
+    return ((await withImageStore('readonly', (s) => s.get('current'))) as Blob | undefined) ?? null;
+  } catch {
+    return null;
+  }
+}

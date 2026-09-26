@@ -3,20 +3,30 @@ import 'maplibre-gl/dist/maplibre-gl.css'
 import './style.css'
 import App from './App.vue'
 import { createPinia } from 'pinia'
-import { saveParams } from './persist'
+import { saveParams, saveWorkspace } from './persist'
 import { useStore } from './store'
 
 const app = createApp(App)
 const pinia = createPinia()
 
-// Persist the site parameters across reloads (#12): debounced so rapid edits
-// (slider drags, typing) collapse into one write.
+// Persist the site parameters, receivers and canvas across reloads (#12):
+// debounced so rapid edits (slider drags, typing) collapse into one write.
 pinia.use(({ store }) => {
   if (store.$id !== 'store') return
   let timer: ReturnType<typeof setTimeout> | undefined
   store.$subscribe((_mutation, state) => {
     clearTimeout(timer)
-    timer = setTimeout(() => saveParams(state.splatParams), 400)
+    timer = setTimeout(() => {
+      saveParams(state.splatParams)
+      // Receivers (positions only, links are recomputed) and canvas settings;
+      // the canvas image itself is stored in IndexedDB on import.
+      saveWorkspace({
+        receivers: state.receivers.map(({ lat, lon, name }) => ({ lat, lon, name })),
+        canvas: state.canvasName
+          ? { name: state.canvasName, opacity: state.canvasOpacity, locked: state.canvasLocked, geom: state.canvasGeom }
+          : null,
+      })
+    }, 400)
   })
 })
 

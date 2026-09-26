@@ -16,7 +16,7 @@ import type { WasmCoverageEngine } from './engine/WasmCoverageEngine.ts';
 import type { CoverageProgress } from './engine/CoverageEngine.ts';
 import { toEngineParams, type CoverageRequest, METERS_PER_FOOT, MAX_RADIUS_METERS } from './engine/params.ts';
 import { analyzeLink, linkColor, type LinkAnalysis } from './engine/link.ts';
-import { loadParams, mergeParams, saveParams } from './persist.ts';
+import { loadCanvasImage, loadParams, loadWorkspace, mergeParams, saveCanvasImage, saveParams, type CanvasGeom } from './persist.ts';
 import {
   decodeSharedHash,
   decodeSharedQuery,
@@ -214,6 +214,7 @@ function initialParams(): SplatParams {
 
 const useStore = defineStore('store', {
   state() {
+    const workspace = loadWorkspace(); // receivers + canvas from the last session
     return {
       localSites: [] as Site[], //useLocalStorage('localSites', ),
       simulationState: 'idle',
@@ -225,9 +226,15 @@ const useStore = defineStore('store', {
       overlayStyle: 'heatmap' as 'heatmap' | 'contours',
       /** Point-to-point link mode (#14): receivers of the one Receiver type,
        * each linked to the transmitter being edited. */
-      receivers: [] as { lat: number; lon: number; name?: string; analysis: LinkAnalysis | null; azimuthDeg: number }[],
+      receivers: workspace.receivers.map((r) => ({ ...r, analysis: null, azimuthDeg: 0 })) as {
+        lat: number;
+        lon: number;
+        name?: string;
+        analysis: LinkAnalysis | null;
+        azimuthDeg: number;
+      }[],
       /** Index into receivers shown in the detail view, -1 for none. */
-      selectedRx: -1,
+      selectedRx: workspace.receivers.length ? 0 : -1,
       linkState: 'idle' as 'idle' | 'placing' | 'computing' | 'done' | 'error',
       linkError: '' as string,
       /** Find-highpoint (#39) status. */
@@ -244,9 +251,10 @@ const useStore = defineStore('store', {
       measureMode: false,
       measureResult: null as { distanceKm: number; bearingDeg: number } | null,
       /** Canvas image overlay (file name empty when none). */
-      canvasName: '',
-      canvasOpacity: 60,
-      canvasLocked: false,
+      canvasName: workspace.canvas?.name ?? '',
+      canvasOpacity: workspace.canvas?.opacity ?? 60,
+      canvasLocked: workspace.canvas?.locked ?? false,
+      canvasGeom: (workspace.canvas?.geom ?? null) as CanvasGeom | null,
     }
   },
   actions: {
@@ -601,11 +609,34 @@ const useStore = defineStore('store', {
         throw new Error(`${file.name} is not a readable PNG or JPG image.`);
       }
       this.removeCanvas();
-      canvas = new CanvasOverlay(map, url, img.naturalWidth, img.naturalHeight);
+      this.showCanvas(url, img, null);
+      this.canvasName = file.name;
+      void saveCanvasImage(file); // survives reloads (IndexedDB)
+    },
+    /** Put a decoded image on the map at `geom` (or the default placement). */
+    showCanvas(url: string, img: HTMLImageElement, geom: CanvasGeom | null) {
+      if (!map) return;
+      canvas = new CanvasOverlay(map, url, img.naturalWidth, img.naturalHeight, geom, (g) => (this.canvasGeom = g));
       canvasUrl = url;
+      this.canvasGeom = canvas.geom();
       canvas.setOpacity(this.canvasOpacity / 100);
       canvas.setLocked(this.canvasLocked);
-      this.canvasName = file.name;
+    },
+    /** Re-show the canvas saved from the previous session, if any. */
+    async restoreCanvas() {
+      if (!this.canvasName || canvas) return;
+      const blob = await loadCanvasImage();
+      if (!blob) return void (this.canvasName = ''); // image gone: drop the stale settings
+      const url = URL.createObjectURL(blob);
+      const img = new Image();
+      img.src = url;
+      try {
+        await img.decode();
+      } catch {
+        URL.revokeObjectURL(url);
+        return void (this.canvasName = '');
+      }
+      this.showCanvas(url, img, this.canvasGeom);
     },
     setCanvasOpacity(v: number) {
       this.canvasOpacity = v;
@@ -621,6 +652,10 @@ const useStore = defineStore('store', {
       if (canvasUrl) URL.revokeObjectURL(canvasUrl);
       canvasUrl = undefined;
       this.canvasName = '';
+      this.canvasGeom = null;
+      // Forget the stored image too. On re-import the following save runs
+      // after this delete (IndexedDB transactions on one store are ordered).
+      void saveCanvasImage(null);
     },
 
     /* ---- Measure / ruler tool (#15) ---- */
@@ -887,6 +922,12 @@ const useStore = defineStore('store', {
         if (!map) return;
         applyBasemap(map, DEFAULT_BASEMAP);
         this.syncOverlays();
+        // Restore the previous session's receivers and canvas.
+        if (this.receivers.length) {
+          this.drawLink();
+          void this.computeLink();
+        }
+        void this.restoreCanvas();
         // App hand-off (#cfg/?run=1): compute coverage once the map is ready, so
         // the resulting overlay and site marker have somewhere to attach.
         if (this.autoRun) {

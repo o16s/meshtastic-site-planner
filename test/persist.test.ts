@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 
-import { mergeParams } from '../src/persist';
+import { mergeParams, parseWorkspace } from '../src/persist';
 import type { SplatParams } from '../src/types';
 
 function defaults(): SplatParams {
@@ -38,5 +38,26 @@ describe('mergeParams', () => {
   it('ignores an array where a section object is expected', () => {
     const merged = mergeParams(defaults(), { receiver: [1, 2, 3] });
     expect(merged.receiver).toEqual(defaults().receiver);
+  });
+});
+
+describe('parseWorkspace', () => {
+  it('keeps valid receivers and canvas settings', () => {
+    const w = parseWorkspace({
+      receivers: [{ lat: 51.1, lon: -114.1, name: 'Site 5' }, { lat: 51.2, lon: -114.2 }],
+      canvas: { name: 'plan.png', opacity: 40, locked: true, geom: { center: { x: 0.2, y: 0.3 }, width: 1e-4, angle: 0.5 } },
+    });
+    expect(w.receivers).toEqual([{ lat: 51.1, lon: -114.1, name: 'Site 5' }, { lat: 51.2, lon: -114.2 }]);
+    expect(w.canvas).toEqual({ name: 'plan.png', opacity: 40, locked: true, geom: { center: { x: 0.2, y: 0.3 }, width: 1e-4, angle: 0.5 } });
+  });
+
+  it('drops malformed entries instead of failing', () => {
+    const w = parseWorkspace({
+      receivers: [{ lat: 'x', lon: 1 }, null, { lat: 1, lon: 2 }],
+      canvas: { name: 'a.jpg', opacity: 500, geom: { center: { x: 1 }, width: -1, angle: 0 } },
+    });
+    expect(w.receivers).toEqual([{ lat: 1, lon: 2 }]);
+    expect(w.canvas).toEqual({ name: 'a.jpg', opacity: 100, locked: false, geom: null });
+    expect(parseWorkspace('garbage')).toEqual({ receivers: [], canvas: null });
   });
 });

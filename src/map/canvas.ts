@@ -7,6 +7,7 @@
  * screen y), and the 4 corners are derived from that, so it never distorts. */
 
 import maplibregl from 'maplibre-gl';
+import type { CanvasGeom } from '../persist.ts';
 
 export interface V {
   x: number;
@@ -61,18 +62,32 @@ export class CanvasOverlay {
   private readonly mover: maplibregl.Marker;
   private readonly rotator: maplibregl.Marker;
 
-  constructor(private readonly map: maplibregl.Map, url: string, imgWidth: number, imgHeight: number) {
+  /** `geom` restores a saved placement; `onChange` fires after each drag. */
+  constructor(
+    private readonly map: maplibregl.Map,
+    url: string,
+    imgWidth: number,
+    imgHeight: number,
+    geom?: CanvasGeom | null,
+    private readonly onChange?: (geom: CanvasGeom) => void
+  ) {
     this.aspect = imgWidth / imgHeight;
-    // Centered in the part of the map the drawer doesn't cover, half its width
-    // wide, so every handle starts out grabbable.
-    const el = map.getContainer();
-    const visible = el.clientWidth - drawerInset(map);
-    // Upright on screen even when the map is rotated: take width and angle
-    // from the screen's horizontal as it lies on the map.
-    this.center = merc(map.unproject([visible / 2, el.clientHeight / 2]));
-    const half = sub(merc(map.unproject([visible * 0.75, el.clientHeight / 2])), this.center);
-    this.width = 2 * Math.hypot(half.x, half.y);
-    this.angle = Math.atan2(half.y, half.x);
+    if (geom) {
+      this.center = geom.center;
+      this.width = geom.width;
+      this.angle = geom.angle;
+    } else {
+      // Centered in the part of the map the drawer doesn't cover, half its
+      // width wide, so every handle starts out grabbable. Upright on screen
+      // even when the map is rotated: width and angle come from the screen's
+      // horizontal as it lies on the map.
+      const el = map.getContainer();
+      const visible = el.clientWidth - drawerInset(map);
+      this.center = merc(map.unproject([visible / 2, el.clientHeight / 2]));
+      const half = sub(merc(map.unproject([visible * 0.75, el.clientHeight / 2])), this.center);
+      this.width = 2 * Math.hypot(half.x, half.y);
+      this.angle = Math.atan2(half.y, half.x);
+    }
 
     // Above the basemap and overlays (basemap-*, overlay-*), below coverage.
     const beforeId = (map.getStyle().layers ?? []).find(
@@ -110,7 +125,12 @@ export class CanvasOverlay {
       this.angle = Math.atan2(d.x, -d.y); // 0 = handle straight above the center
       this.update();
     });
+    for (const h of this.handles()) h.on('dragend', () => this.onChange?.(this.geom()));
     this.update();
+  }
+
+  geom(): CanvasGeom {
+    return { center: { x: this.center.x, y: this.center.y }, width: this.width, angle: this.angle };
   }
 
   setOpacity(v: number) {
