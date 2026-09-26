@@ -154,6 +154,19 @@
           </button>
         </div>
 
+        <!-- Links don't follow parameter edits on their own (the coverage run
+             doesn't either), so offer the refresh right under Run. -->
+        <button
+          v-if="store.receivers.length"
+          type="button"
+          class="mt-btn mt-btn-secondary mt-btn-sm mt-2 w-full"
+          :disabled="store.linkState === 'computing'"
+          title="Recalculate every receiver link with the current transmitter and receiver settings."
+          @click="store.computeLink()"
+        >
+          {{ store.linkState === 'computing' ? 'Updating links…' : `Update receiver links (${store.receivers.length})` }}
+        </button>
+
         <p class="mt-2 text-center text-xs text-ink-muted">
           Based on
           <a href="https://github.com/meshtastic/meshtastic-site-planner" target="_blank" rel="noopener" class="underline hover:text-ink">Meshtastic Site Planner</a>

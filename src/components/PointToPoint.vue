@@ -101,10 +101,6 @@
         <span>{{ fmt(a.distanceKm, 1) }} km · {{ fmt(sel!.azimuthDeg, 0) }}°</span>
         <span>{{ rxLabel(store.selectedRx) }}</span>
       </div>
-
-      <button type="button" class="mt-btn mt-btn-secondary mt-btn-sm mt-2 w-full" @click="store.computeLink()">
-        Recompute all with current settings
-      </button>
     </div>
   </div>
 </template>
