@@ -70,7 +70,7 @@
       </button>
     </div>
     <p v-if="store.highpointMessage" class="mt-hint mt-1">{{ store.highpointMessage }}</p>
-    <p class="mt-hint mt-2">Tip: drag the green pin to fine-tune, or type coordinates above.</p>
+    <p class="mt-hint mt-2">Tip: drag the amber pin to fine-tune, or type coordinates above.</p>
   </div>
 </template>
 

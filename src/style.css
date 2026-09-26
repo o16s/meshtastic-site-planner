@@ -1,17 +1,18 @@
 @import 'tailwindcss';
 
-/* Meshtastic Site Planner theme.
+/* Octanis RF Map theme.
  *
- * Implements the Meshtastic Client Design Standards v1.4 (dark scheme):
- * the --mt-* custom properties below are the documented dark-mode Material
- * role mapping built from the brand palette (Neutral #2C2D3C scale,
- * Green #67EA94 scale) and remain the single source of truth. They are
- * surfaced to Tailwind utilities via the @theme block. */
+ * Keeps the structure of the Meshtastic Client Design Standards v1.4 (dark
+ * scheme) that this app was built on: the --mt-* custom properties below are
+ * the dark-mode Material role mapping over the Neutral #2C2D3C scale, with the
+ * primary role swapped to Octanis amber (#FFBF00, the octanis.ch brand color).
+ * They remain the single source of truth and are surfaced to Tailwind
+ * utilities via the @theme block. */
 :root {
-  --mt-primary: #67ea94; /* Green 500 */
-  --mt-on-primary: #0f1017; /* Neutral 950 */
-  --mt-primary-container: #2d8f52; /* Green 700 */
-  --mt-on-primary-container: #b5f5ce; /* Green 300 */
+  --mt-primary: #ffbf00; /* Octanis amber */
+  --mt-on-primary: #121212; /* Octanis brand foreground */
+  --mt-primary-container: #8a6800; /* Amber 700 */
+  --mt-on-primary-container: #ffe7a0; /* Amber 200 */
   --mt-secondary: #b8bac8; /* Neutral 300 */
   --mt-secondary-container: #3d3e50; /* Neutral 700 */
   --mt-on-secondary-container: #d5d6e0; /* Neutral 200 */
@@ -52,10 +53,10 @@
   --color-line: var(--mt-outline-variant); /* #444660 */
   --color-line-strong: var(--mt-outline); /* #767892 */
 
-  --color-primary: var(--mt-primary); /* #67ea94 */
-  --color-on-primary: var(--mt-on-primary); /* #0f1017 */
-  --color-primary-hi: #8ff0b2; /* Green 400 */
-  --color-primary-lo: #3fb86d; /* Green 600 */
+  --color-primary: var(--mt-primary); /* #ffbf00 */
+  --color-on-primary: var(--mt-on-primary); /* #121212 */
+  --color-primary-hi: #ffd24d; /* Amber 400 */
+  --color-primary-lo: #d9a200; /* Amber 600 */
 
   --color-tonal: var(--mt-secondary-container); /* #3d3e50 */
   --color-on-tonal: var(--mt-on-secondary-container); /* #d5d6e0 */
@@ -235,7 +236,7 @@ body {
 .mt-search-input:focus {
   outline: none;
   border-color: var(--mt-primary);
-  box-shadow: 0 0 0 0.2rem rgba(103, 234, 148, 0.25);
+  box-shadow: 0 0 0 0.2rem rgba(255, 191, 0, 0.25);
 }
 
 .mt-search-results {
@@ -351,7 +352,7 @@ body {
   margin-left: -7px;
   margin-bottom: -4px;
   border-radius: 50%;
-  background: rgba(103, 234, 148, 0.5);
+  background: rgba(255, 191, 0, 0.5);
   animation: mt-pin-pulse 1.8s ease-out infinite;
 }
 
@@ -515,7 +516,7 @@ body {
 
 .mt-basemap-list .mt-basemap-item.active {
   color: var(--mt-primary);
-  background: rgba(103, 234, 148, 0.14);
+  background: rgba(255, 191, 0, 0.14);
 }
 
 /* ---------- Map: popups ---------- */
@@ -587,7 +588,7 @@ body {
 }
 
 .mt-verdict-good {
-  background: rgba(103, 234, 148, 0.14);
+  background: rgba(255, 191, 0, 0.14);
   color: var(--mt-primary);
 }
 

@@ -608,7 +608,7 @@ const useStore = defineStore('store', {
           source: MEASURE_SRC,
           filter: ['==', ['geometry-type'], 'LineString'],
           layout: { 'line-cap': 'round' },
-          paint: { 'line-color': '#67ea94', 'line-width': 2.5, 'line-dasharray': [2, 1.5] },
+          paint: { 'line-color': '#ffbf00', 'line-width': 2.5, 'line-dasharray': [2, 1.5] },
         });
         map.addLayer({
           id: `${MEASURE_SRC}-pts`,
@@ -617,7 +617,7 @@ const useStore = defineStore('store', {
           filter: ['==', ['geometry-type'], 'Point'],
           paint: {
             'circle-radius': 4,
-            'circle-color': '#67ea94',
+            'circle-color': '#ffbf00',
             'circle-stroke-color': '#0f1017',
             'circle-stroke-width': 2,
           },

@@ -1,7 +1,7 @@
 {
-  "name": "Meshtastic Site Planner",
-  "short_name": "Site Planner",
-  "description": "Predict Meshtastic radio coverage with the ITM/Longley-Rice model, entirely in your browser.",
+  "name": "Octanis RF Map",
+  "short_name": "RF Map",
+  "description": "Predict LoRa / Meshtastic radio coverage with the ITM/Longley-Rice model, entirely in your browser.",
   "start_url": ".",
   "scope": ".",
   "display": "standalone",

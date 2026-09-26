@@ -1,5 +1,7 @@
 # Meshtastic Site Planner
 
+> **Octanis RF Map** is a fork of the Meshtastic Site Planner, served at https://rfmap.octanis.ch. It is rebranded (name, logo, amber theme) and otherwise tracks upstream. It is not an official Meshtastic project.
+
 [![CLA assistant](https://cla-assistant.io/readme/badge/meshtastic/meshtastic-site-planner )](https://cla-assistant.io/meshtastic/meshtastic-site-planner )
 
 ## About

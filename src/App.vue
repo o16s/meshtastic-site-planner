@@ -3,8 +3,8 @@
     <!-- App header -->
     <nav class="fixed inset-x-0 top-0 z-[1100] flex h-[57px] items-center justify-between border-b border-line bg-sunken px-4">
       <a href="#" class="flex items-center gap-2.5 font-semibold tracking-[0.01em] text-ink no-underline">
-        <img src="/logo.svg" alt="Meshtastic logo" width="34" height="18" class="inline-block" />
-        <span>Meshtastic <span class="font-normal text-ink-muted">Site Planner</span></span>
+        <img src="/octanis-logo.png" alt="Octanis" width="77" height="22" class="inline-block h-[22px] w-auto" />
+        <span class="font-normal text-ink-muted">RF Map</span>
       </a>
       <div class="flex items-center gap-2">
         <button
@@ -47,7 +47,7 @@
         <svg viewBox="0 0 24 24" class="mt-0.5 size-5 shrink-0 text-primary" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>
         <div class="text-sm">
           <p class="font-semibold text-ink">Plan your first site</p>
-          <p class="mt-0.5 text-ink-muted">Drag the green pin (or use “Place on map”) to set your transmitter, pick a device or tune the radio, then press <span class="text-ink">Run Simulation</span>.</p>
+          <p class="mt-0.5 text-ink-muted">Drag the amber pin (or use “Place on map”) to set your transmitter, pick a device or tune the radio, then press <span class="text-ink">Run Simulation</span>.</p>
         </div>
         <button type="button" class="shrink-0 text-ink-muted hover:text-ink" aria-label="Dismiss hint" @click="dismissOnboarding">
           <svg viewBox="0 0 24 24" class="size-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="m6 6 12 12M18 6 6 18"/></svg>
@@ -152,6 +152,13 @@
             Cancel
           </button>
         </div>
+
+        <p class="mt-2 text-center text-xs text-ink-muted">
+          Based on
+          <a href="https://github.com/meshtastic/meshtastic-site-planner" target="_blank" rel="noopener" class="underline hover:text-ink">Meshtastic Site Planner</a>
+          · GPL-3.0 ·
+          <a href="https://github.com/o16s/meshtastic-site-planner" target="_blank" rel="noopener" class="underline hover:text-ink">Source</a>
+        </p>
       </template>
     </AppDrawer>
 
