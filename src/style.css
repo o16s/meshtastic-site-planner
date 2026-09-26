@@ -491,7 +491,7 @@ body {
 /* Scoped under .mt-basemap-list so `border: 0` out-specifies MapLibre's
  * `.maplibregl-ctrl-group button + button` top border, which otherwise draws a
  * #ddd divider between these nested menu items. Items read as clean padded
- * rows: hover tint, and a subtle green wash for the active basemap. */
+ * rows: hover tint, and a subtle amber wash for the active basemap. */
 .mt-basemap-list .mt-basemap-item {
   display: block;
   width: 100% !important;
@@ -517,6 +517,17 @@ body {
 .mt-basemap-list .mt-basemap-item.active {
   color: var(--mt-primary);
   background: rgba(255, 191, 0, 0.14);
+}
+
+/* Overlay toggles (hillshade) sit under the basemap list, divided off. */
+.mt-basemap-list .mt-basemap-overlay {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.25rem;
+  border-top: 1px solid var(--mt-outline-variant);
+  border-radius: 0 0 0.5rem 0.5rem;
+  accent-color: var(--mt-primary);
 }
 
 /* ---------- Map: popups ---------- */

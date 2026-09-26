@@ -1,7 +1,7 @@
 /* MapLibre basemaps: keyless raster sources, defined as plain raster-source
  * specs so they can be swapped IN PLACE rather than via setStyle().
  *
- * Every basemap here must render without an API key. CARTO withdrew keyless
+ * Every basemap here must render without an API key (Terrain: see STADIA_KEY). CARTO withdrew keyless
  * access to basemaps.cartocdn.com and now paints "API KEY REQUIRED" into the
  * tile itself, so the three CARTO styles this file used to serve (Dark,
  * Streets, Light) returned HTTP 200 and a defaced image — including the
@@ -14,7 +14,7 @@
  * map's whole lifetime and only add/remove the basemap's raster
  * source+layer, which is faster (no flash) and avoids that teardown. */
 
-import type { RasterSourceSpecification, StyleSpecification } from 'maplibre-gl';
+import type { RasterDEMSourceSpecification, RasterSourceSpecification, StyleSpecification } from 'maplibre-gl';
 
 const ESRI_CANVAS_ATTR =
   'Tiles &copy; Esri &mdash; Esri, HERE, Garmin, &copy; OpenStreetMap contributors, and the GIS User Community';
@@ -22,6 +22,7 @@ const ESRI_IMG_ATTR =
   'Tiles &copy; Esri &mdash; Source: Esri, Maxar, Earthstar Geographics';
 const ESRI_TOPO_ATTR =
   'Tiles &copy; Esri &mdash; Esri, USGS, NGA, NASA, & the GIS community';
+const OSM_ATTR = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors';
 const STADIA_ATTR =
   '&copy; <a href="https://stadiamaps.com/">Stadia Maps</a> &copy; <a href="https://stamen.com/">Stamen Design</a> &copy; <a href="https://openmaptiles.org/">OpenMapTiles</a> &copy; OpenStreetMap contributors';
 
@@ -34,6 +35,15 @@ function esriTiles(service: string): string[] {
   return [
     `https://server.arcgisonline.com/ArcGIS/rest/services/${service}/MapServer/tile/{z}/{y}/{x}`,
   ];
+}
+
+function usgsTiles(service: string): string[] {
+  return [`https://basemap.nationalmap.gov/arcgis/rest/services/${service}/MapServer/tile/{z}/{y}/{x}`];
+}
+
+/** MapLibre has no {s} subdomain token (Leaflet does): expand it. */
+function abc(url: string): string[] {
+  return ['a', 'b', 'c'].map((s) => url.replace('{s}', s));
 }
 
 function stadiaTiles(style: string): string[] {
@@ -72,7 +82,47 @@ export const BASEMAPS: Record<string, BasemapLayerSpec[]> = {
     { source: raster(esriTiles('World_Imagery'), 256, ESRI_IMG_ATTR, 19) },
     { source: raster(esriTiles('Reference/World_Boundaries_and_Places'), 256, 'Labels &copy; Esri', 19) },
   ],
+  // Free alternatives that often carry more detail in remote areas.
+  // Contours + hillshade from SRTM over OSM data.
+  OpenTopoMap: [{ source: raster(abc('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png'), 256, `${OSM_ATTR}, SRTM | Style &copy; <a href="https://opentopomap.org">OpenTopoMap</a> (CC-BY-SA)`, 17) }],
+  // OSM styled for villages/tracks/buildings (Humanitarian OSM Team).
+  'OSM Humanitarian': [{ source: raster(abc('https://{s}.tile.openstreetmap.fr/hot/{z}/{x}/{y}.png'), 256, `${OSM_ATTR}, tiles by <a href="https://www.hotosm.org/">HOT</a> hosted by OSM France`, 19) }],
+  // USGS National Map (public domain); blank outside the US and territories.
+  'USGS Topo (US)': [{ source: raster(usgsTiles('USGSTopo'), 256, 'USGS The National Map', 16) }],
+  'USGS Imagery (US)': [{ source: raster(usgsTiles('USGSImageryOnly'), 256, 'USDA, USGS The National Map: Orthoimagery', 16) }],
+  // Global 10 m cloud-free mosaic. The un-yeared layer is the 2016 edition
+  // (CC-BY 4.0); the yearly 2017+ layers are non-commercial only.
+  'Sentinel-2 (2016)': [{ source: raster(['https://tiles.maps.eox.at/wmts/1.0.0/s2cloudless_3857/default/g/{z}/{y}/{x}.jpg'], 256, '<a href="https://s2maps.eu">Sentinel-2 cloudless</a> by EOX IT Services GmbH (Contains modified Copernicus Sentinel data 2016), CC-BY 4.0', 14) }],
 };
+
+/** Toggleable relief overlay drawn above any basemap, below coverage:
+ * MapLibre's native hillshade (transparent shadows/highlights, so it darkens
+ * relief without washing out the basemap) from AWS Terrain Tiles, the same
+ * free bucket the engine reads SRTM from. */
+const HILLSHADE_ID = 'overlay-hillshade';
+const HILLSHADE_DEM: RasterDEMSourceSpecification = {
+  type: 'raster-dem',
+  tiles: ['https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png'],
+  tileSize: 256,
+  encoding: 'terrarium',
+  maxzoom: 15,
+  attribution: 'Hillshade: <a href="https://registry.opendata.aws/terrain-tiles/">AWS Terrain Tiles</a>',
+};
+
+export function setHillshade(map: import('maplibre-gl').Map, on: boolean): void {
+  if (map.getLayer(HILLSHADE_ID)) map.removeLayer(HILLSHADE_ID);
+  if (map.getSource(HILLSHADE_ID)) map.removeSource(HILLSHADE_ID);
+  if (!on) return;
+  // Just above the basemap. applyBasemap inserts basemaps below the lowest
+  // non-basemap layer (this one), so the overlay survives basemap switches.
+  const beforeId = (map.getStyle().layers ?? []).find((l) => !l.id.startsWith(BASEMAP_PREFIX))?.id;
+  map.addSource(HILLSHADE_ID, HILLSHADE_DEM);
+  map.addLayer(
+    { id: HILLSHADE_ID, type: 'hillshade', source: HILLSHADE_ID, paint: { 'hillshade-exaggeration': 0.5 } },
+    beforeId
+  );
+}
+
 
 function raster(
   tiles: string[],

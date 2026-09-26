@@ -5,7 +5,7 @@ import maplibregl from 'maplibre-gl';
 import { type Site, type SplatParams } from './types.ts';
 import { cloneObject } from './utils.ts';
 import { draftPinElement, sitePinElement, targetPinElement } from './layers.ts';
-import { BASEMAPS, DEFAULT_BASEMAP, applyBasemap, emptyStyle } from './map/styles.ts';
+import { BASEMAPS, DEFAULT_BASEMAP, applyBasemap, emptyStyle, setHillshade } from './map/styles.ts';
 import { BasemapControl, ExportControl, MeasureControl } from './map/controls.ts';
 import { SearchControl } from './map/search.ts';
 import { coverageImage, cropToRadius } from './map/overlay.ts';
@@ -827,7 +827,7 @@ const useStore = defineStore('store', {
           // Swap the basemap raster source/layers in place (keeps overlays,
           // markers, and the GL context intact).
           if (map) applyBasemap(map, name);
-        }),
+        }, (on) => map && setHillshade(map, on)),
         'bottom-left'
       );
       // Compact (collapsed to an "i" that expands on click) so the required
