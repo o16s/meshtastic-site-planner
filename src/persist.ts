@@ -142,3 +142,43 @@ export async function loadCanvasImage(): Promise<Blob | null> {
     return null;
   }
 }
+
+/* ---- Map view: where the user left the map (center, zoom, rotation, tilt) ---- */
+
+export const VIEW_KEY = 'mt-map-view-v1';
+
+export interface MapView {
+  center: [number, number]; // [lng, lat]
+  zoom: number;
+  bearing: number;
+  pitch: number;
+}
+
+export function parseView(v: unknown): MapView | null {
+  const o = v as Partial<MapView> | null;
+  const c = o?.center;
+  if (!o || !Array.isArray(c) || !isNum(c[0]) || !isNum(c[1]) || Math.abs(c[1]) > 90) return null;
+  if (!isNum(o.zoom) || o.zoom < 0 || o.zoom > 24) return null;
+  return {
+    center: [c[0], c[1]],
+    zoom: o.zoom,
+    bearing: isNum(o.bearing) ? o.bearing : 0,
+    pitch: isNum(o.pitch) ? Math.min(85, Math.max(0, o.pitch)) : 0,
+  };
+}
+
+export function loadView(): MapView | null {
+  try {
+    return parseView(JSON.parse(localStorage.getItem(VIEW_KEY) ?? 'null'));
+  } catch {
+    return null;
+  }
+}
+
+export function saveView(v: MapView): void {
+  try {
+    localStorage.setItem(VIEW_KEY, JSON.stringify(v));
+  } catch {
+    /* ignore: quota exceeded or storage disabled */
+  }
+}

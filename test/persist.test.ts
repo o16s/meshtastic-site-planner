@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 
-import { mergeParams, parseWorkspace } from '../src/persist';
+import { mergeParams, parseView, parseWorkspace } from '../src/persist';
 import type { SplatParams } from '../src/types';
 
 function defaults(): SplatParams {
@@ -59,5 +59,16 @@ describe('parseWorkspace', () => {
     expect(w.receivers).toEqual([{ lat: 1, lon: 2 }]);
     expect(w.canvas).toEqual({ name: 'a.jpg', opacity: 100, locked: false, geom: null });
     expect(parseWorkspace('garbage')).toEqual({ receivers: [], canvas: null });
+  });
+});
+
+describe('parseView', () => {
+  it('keeps a valid view and clamps tilt', () => {
+    expect(parseView({ center: [8.5, 47.4], zoom: 12.3, bearing: -55, pitch: 99 })).toEqual({ center: [8.5, 47.4], zoom: 12.3, bearing: -55, pitch: 85 });
+  });
+  it('rejects malformed views', () => {
+    expect(parseView({ center: [8.5, 147], zoom: 3 })).toBeNull(); // latitude out of range
+    expect(parseView({ center: [8.5, 47.4], zoom: 'far' })).toBeNull();
+    expect(parseView(null)).toBeNull();
   });
 });

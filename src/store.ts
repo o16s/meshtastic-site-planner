@@ -16,7 +16,17 @@ import type { WasmCoverageEngine } from './engine/WasmCoverageEngine.ts';
 import type { CoverageProgress } from './engine/CoverageEngine.ts';
 import { toEngineParams, type CoverageRequest, METERS_PER_FOOT, MAX_RADIUS_METERS } from './engine/params.ts';
 import { analyzeLink, linkColor, type LinkAnalysis } from './engine/link.ts';
-import { loadCanvasImage, loadParams, loadWorkspace, mergeParams, saveCanvasImage, saveParams, type CanvasGeom } from './persist.ts';
+import {
+  loadCanvasImage,
+  loadParams,
+  loadView,
+  loadWorkspace,
+  mergeParams,
+  saveCanvasImage,
+  saveParams,
+  saveView,
+  type CanvasGeom,
+} from './persist.ts';
 import {
   decodeSharedHash,
   decodeSharedQuery,
@@ -211,6 +221,10 @@ function initialParams(): SplatParams {
   }
   return loadParams(d);
 }
+
+/** Opened from a shared #cfg permalink or ?lat= hand-off. Read at module load:
+ * main.ts clears the hash/query right after mount (consumeSharedLink). */
+const openedFromLink = !!(decodeSharedHash() || decodeSharedQuery());
 
 const useStore = defineStore('store', {
   state() {
@@ -870,18 +884,28 @@ const useStore = defineStore('store', {
       });
     },
     initMap() {
+      // Reopen where the user left the map, unless a link says where to look.
+      const view = openedFromLink ? null : loadView();
       map = new maplibregl.Map({
         container: 'map',
         // Start from an empty style and add the basemap in place (see
         // src/map/styles.ts for why setStyle-based switching is avoided).
         style: emptyStyle(),
-        center: [this.splatParams.transmitter.tx_lon, this.splatParams.transmitter.tx_lat],
-        zoom: 9,
+        center: view?.center ?? [this.splatParams.transmitter.tx_lon, this.splatParams.transmitter.tx_lat],
+        zoom: view?.zoom ?? 9,
+        bearing: view?.bearing ?? 0,
+        pitch: view?.pitch ?? 0,
         // Needed so the export control can read the WebGL canvas.
         canvasContextAttributes: { preserveDrawingBuffer: true },
         // Default attribution disabled; added explicitly below at bottom-left
         // (the right sidebar would otherwise cover a bottom-right control).
         attributionControl: false,
+      });
+
+      map.on('moveend', () => {
+        if (!map) return;
+        const c = map.getCenter();
+        saveView({ center: [c.lng, c.lat], zoom: map.getZoom(), bearing: map.getBearing(), pitch: map.getPitch() });
       });
 
       map.addControl(new SearchControl(), 'top-left');
