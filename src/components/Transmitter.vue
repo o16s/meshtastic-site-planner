@@ -92,6 +92,7 @@ function applyDevice() {
   if (!d) return;
   transmitter.tx_power = d.tx_power;
   transmitter.tx_gain = d.tx_gain;
+  if (d.tx_freq) transmitter.tx_freq = d.tx_freq;
 }
 
 // If power or gain is hand-edited away from the chosen device, fall back to
