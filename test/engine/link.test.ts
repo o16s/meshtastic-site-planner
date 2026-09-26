@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 
-import { analyzeLink, FRESNEL_CLEAR_FRACTION, type LinkAnalysisInput } from '../../src/engine/link';
+import { analyzeLink, linkColor, FRESNEL_CLEAR_FRACTION, type LinkAnalysisInput } from '../../src/engine/link';
 import type { LinkProfilePoint } from '../../src/engine/core';
 
 /** Flat ground profile from 0..distKm at 1 km steps, all at `groundM`. */
@@ -83,5 +83,15 @@ describe('analyzeLink', () => {
     expect(a.samples).toHaveLength(6);
     expect(a.samples[0].rayM).toBeCloseTo(110, 6); // 100 m ground + 10 m TX
     expect(a.samples[a.samples.length - 1].rayM).toBeCloseTo(120, 6); // 100 + 20 RX
+  });
+});
+
+describe('linkColor', () => {
+  it('grades links green / yellow / red, grey when not computed', () => {
+    expect(linkColor(null)).toBe('#9aa0aa');
+    const clear = analyzeLink({ ...base, profile: flat(5), txHeightM: 30, rxHeightM: 30 });
+    expect(linkColor(clear)).toBe('#67ea94');
+    expect(linkColor({ ...clear, fresnelClear: false })).toBe('#f5c518');
+    expect(linkColor({ ...clear, marginDb: -1 })).toBe('#ff5c5c');
   });
 });

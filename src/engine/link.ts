@@ -118,3 +118,12 @@ export function analyzeLink(input: LinkAnalysisInput): LinkAnalysis {
     samples,
   };
 }
+
+/** Map/chart color for a link: green viable, yellow marginal (Fresnel
+ * obstructed), red below sensitivity, grey not computed yet. */
+export function linkColor(a: LinkAnalysis | null | undefined): string {
+  if (!a) return '#9aa0aa';
+  if (a.marginDb >= 0 && a.fresnelClear) return '#67ea94';
+  if (a.marginDb >= 0) return '#f5c518';
+  return '#ff5c5c';
+}

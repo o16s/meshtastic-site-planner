@@ -168,7 +168,7 @@
     </div>
 
     <div v-if="store.linkState === 'placing'" class="mt-place-hint" role="status">
-      <span><span class="mt-place-dot mt-place-dot-target"></span>Click the map to place the link target</span>
+      <span><span class="mt-place-dot mt-place-dot-target"></span>Click the map to add a receiver</span>
       <button type="button" class="mt-place-cancel" @click="store.cancelPlaceTarget()">Cancel (Esc)</button>
     </div>
 

@@ -14,7 +14,7 @@ import { canShareFiles, exportGeoJSON, exportKml, exportPngWorldFile, postCovera
 import type { WasmCoverageEngine } from './engine/WasmCoverageEngine.ts';
 import type { CoverageProgress } from './engine/CoverageEngine.ts';
 import { toEngineParams, type CoverageRequest, METERS_PER_FOOT, MAX_RADIUS_METERS } from './engine/params.ts';
-import { analyzeLink, type LinkAnalysis } from './engine/link.ts';
+import { analyzeLink, linkColor, type LinkAnalysis } from './engine/link.ts';
 import { loadParams, mergeParams, saveParams } from './persist.ts';
 import {
   decodeSharedHash,
@@ -38,8 +38,9 @@ const siteMarkers = new Map<string, maplibregl.Marker>();
 // Active only while "place on map" is armed.
 let placeEscHandler: ((e: KeyboardEvent) => void) | undefined;
 let placeClickHandler: ((e: maplibregl.MapMouseEvent) => void) | undefined;
-// Point-to-point link mode (#14): target marker, arming handlers, in-flight run.
-let targetMarker: maplibregl.Marker | undefined;
+// Point-to-point link mode (#14): receiver markers (same order as
+// store.receivers), arming handlers, in-flight run.
+let rxMarkers: maplibregl.Marker[] = [];
 let linkEscHandler: ((e: KeyboardEvent) => void) | undefined;
 let linkClickHandler: ((e: maplibregl.MapMouseEvent) => void) | undefined;
 let linkAbort: AbortController | undefined;
@@ -218,10 +219,11 @@ const useStore = defineStore('store', {
       placingMode: false,
       /** Live, global render style for every coverage overlay. */
       overlayStyle: 'heatmap' as 'heatmap' | 'contours',
-      /** Point-to-point link mode (#14). */
-      linkTarget: null as { lat: number; lon: number } | null,
-      linkAnalysis: null as LinkAnalysis | null,
-      linkAzimuthDeg: 0,
+      /** Point-to-point link mode (#14): receivers of the one Receiver type,
+       * each linked to the transmitter being edited. */
+      receivers: [] as { lat: number; lon: number; analysis: LinkAnalysis | null; azimuthDeg: number }[],
+      /** Index into receivers shown in the detail view, -1 for none. */
+      selectedRx: -1,
       linkState: 'idle' as 'idle' | 'placing' | 'computing' | 'done' | 'error',
       linkError: '' as string,
       /** Find-highpoint (#39) status. */
@@ -308,7 +310,7 @@ const useStore = defineStore('store', {
     },
 
     /* ---- Point-to-point link mode (#14) ---- */
-    /** Arm click-to-place for the link target (crosshair + Esc to cancel). */
+    /** Arm click-to-place for a new receiver (crosshair + Esc to cancel). */
     beginPlaceTarget() {
       if (!map) return;
       if (this.linkState === 'placing') {
@@ -321,7 +323,7 @@ const useStore = defineStore('store', {
       linkClickHandler = (e: maplibregl.MapMouseEvent) => {
         const lon = wrapLon(e.lngLat.lng);
         this.cancelPlaceTarget();
-        this.setLinkTarget(Number(e.lngLat.lat.toFixed(6)), Number(lon.toFixed(6)));
+        this.addReceiver(Number(e.lngLat.lat.toFixed(6)), Number(lon.toFixed(6)));
       };
       map.on('click', linkClickHandler);
       linkEscHandler = (ev: KeyboardEvent) => {
@@ -331,7 +333,7 @@ const useStore = defineStore('store', {
     },
     cancelPlaceTarget() {
       if (this.linkState === 'placing')
-        this.linkState = this.linkAnalysis ? 'done' : 'idle';
+        this.linkState = this.receivers.some((r) => r.analysis) ? 'done' : 'idle';
       if (map) map.getCanvas().style.cursor = '';
       if (linkClickHandler) {
         map?.off('click', linkClickHandler);
@@ -342,46 +344,72 @@ const useStore = defineStore('store', {
         linkEscHandler = undefined;
       }
     },
-    /** Set or move the link target, then (re)compute the link. */
-    setLinkTarget(lat: number, lon: number) {
-      this.linkTarget = { lat, lon };
+    addReceiver(lat: number, lon: number) {
+      this.receivers.push({ lat, lon, analysis: null, azimuthDeg: 0 });
+      this.selectedRx = this.receivers.length - 1;
       this.drawLink();
       void this.computeLink();
     },
+    moveReceiver(i: number, lat: number, lon: number) {
+      const r = this.receivers[i];
+      if (!r) return;
+      r.lat = lat;
+      r.lon = lon;
+      r.analysis = null;
+      this.drawLink();
+      void this.computeLink();
+    },
+    removeReceiver(i: number) {
+      if (!this.receivers[i]) return;
+      if (this.receivers.length === 1) return this.clearLink();
+      this.receivers.splice(i, 1);
+      if (this.selectedRx >= this.receivers.length || this.selectedRx === i)
+        this.selectedRx = Math.min(i, this.receivers.length - 1);
+      else if (this.selectedRx > i) this.selectedRx--;
+      // Rebuild markers so their order (and drag indices) match the list.
+      rxMarkers.forEach((m) => m.remove());
+      rxMarkers = [];
+      this.drawLink();
+    },
+    /** (Re)compute every receiver's link with the current settings. */
     async computeLink() {
-      if (!this.linkTarget) return;
+      if (!this.receivers.length) return;
       linkAbort?.abort();
       linkAbort = new AbortController();
       const signal = linkAbort.signal;
       this.linkState = 'computing';
       this.linkError = '';
       try {
-        const request = buildCoverageRequest(this.splatParams);
-        // The engine region is a disk around the TX; widen the radius so it
-        // reaches the target (plus margin), capped at the terrain-data limit.
-        const distKm = haversineKm(request.lat, request.lon, this.linkTarget.lat, this.linkTarget.lon);
-        request.radius = Math.min(MAX_RADIUS_METERS, (distKm * 1.2 + 2) * 1000);
-        request.high_resolution = false; // a single path doesn't need HD pages
-        const params = toEngineParams(request);
-        const target = {
-          lat: this.linkTarget.lat,
-          lon: this.linkTarget.lon,
-          altFeet: this.splatParams.receiver.rx_height / METERS_PER_FOOT,
-        };
-        const link = await (await getEngine()).runLink(params, target, { terrain: getTerrain(), signal });
-        if (signal.aborted) return;
-        this.linkAzimuthDeg = link.azimuthDeg;
-        this.linkAnalysis = analyzeLink({
-          profile: link.profile,
-          txHeightM: this.splatParams.transmitter.tx_height,
-          rxHeightM: this.splatParams.receiver.rx_height,
-          frequencyMhz: this.splatParams.transmitter.tx_freq,
-          dbm: link.dbm,
-          rxGainDbi: this.splatParams.receiver.rx_gain,
-          rxSensitivityDbm: this.splatParams.receiver.rx_sensitivity,
-        });
+        const p = this.splatParams;
+        // ponytail: recomputes all receivers sequentially (one ITM path each,
+        // terrain cached); batch runLinks in one EngineContext if tens of
+        // receivers get slow.
+        for (const r of this.receivers) {
+          const request = buildCoverageRequest(p);
+          // The engine region is a disk around the TX; widen the radius so it
+          // reaches the receiver (plus margin), capped at the terrain-data limit.
+          const distKm = haversineKm(request.lat, request.lon, r.lat, r.lon);
+          request.radius = Math.min(MAX_RADIUS_METERS, (distKm * 1.2 + 2) * 1000);
+          request.high_resolution = false; // a single path doesn't need HD pages
+          const target = { lat: r.lat, lon: r.lon, altFeet: p.receiver.rx_height / METERS_PER_FOOT };
+          const link = await (await getEngine()).runLink(toEngineParams(request), target, {
+            terrain: getTerrain(),
+            signal,
+          });
+          if (signal.aborted) return;
+          r.azimuthDeg = link.azimuthDeg;
+          r.analysis = analyzeLink({
+            profile: link.profile,
+            txHeightM: p.transmitter.tx_height,
+            rxHeightM: p.receiver.rx_height,
+            frequencyMhz: p.transmitter.tx_freq,
+            dbm: link.dbm,
+            rxGainDbi: p.receiver.rx_gain,
+            rxSensitivityDbm: p.receiver.rx_sensitivity,
+          });
+        }
         this.linkState = 'done';
-        this.drawLink(); // recolor the line by viability
+        this.drawLink(); // recolor the lines by viability
       } catch (error) {
         if (error instanceof DOMException && error.name === 'AbortError') return;
         this.linkError = error instanceof Error ? error.message : String(error);
@@ -391,56 +419,58 @@ const useStore = defineStore('store', {
     clearLink() {
       linkAbort?.abort();
       this.cancelPlaceTarget();
-      this.linkTarget = null;
-      this.linkAnalysis = null;
+      this.receivers = [];
+      this.selectedRx = -1;
       this.linkState = 'idle';
       this.linkError = '';
-      targetMarker?.remove();
-      targetMarker = undefined;
+      rxMarkers.forEach((m) => m.remove());
+      rxMarkers = [];
       if (map?.getLayer(LINK_LINE_ID)) map.removeLayer(LINK_LINE_ID);
       if (map?.getSource(LINK_LINE_ID)) map.removeSource(LINK_LINE_ID);
     },
-    /** Draw or update the target marker and the TX->target line. */
+    /** Draw or update the receiver markers and the TX->receiver lines. */
     drawLink() {
-      if (!map || !this.linkTarget) return;
+      if (!map || !this.receivers.length) return;
+      const m = map;
       const tx = this.splatParams.transmitter;
-      const tgt = this.linkTarget;
-      if (targetMarker) {
-        targetMarker.setLngLat([tgt.lon, tgt.lat]);
-      } else {
-        targetMarker = new maplibregl.Marker({ element: targetPinElement(), anchor: 'bottom', draggable: true })
-          .setLngLat([tgt.lon, tgt.lat])
-          .addTo(map);
-        targetMarker.on('dragend', () => {
-          const ll = targetMarker!.getLngLat();
-          this.setLinkTarget(Number(ll.lat.toFixed(6)), Number(wrapLon(ll.lng).toFixed(6)));
-        });
-      }
-      const a = this.linkAnalysis;
-      const color = !a
-        ? '#9aa0aa'
-        : a.marginDb >= 0 && a.fresnelClear
-          ? '#67ea94'
-          : a.marginDb >= 0
-            ? '#f5c518'
-            : '#ff5c5c';
+      this.receivers.forEach((r, i) => {
+        let marker = rxMarkers[i];
+        if (!marker) {
+          const el = targetPinElement();
+          marker = new maplibregl.Marker({ element: el, anchor: 'bottom', draggable: true })
+            .setLngLat([r.lon, r.lat])
+            .addTo(m);
+          const mk = marker;
+          el.addEventListener('click', () => (this.selectedRx = rxMarkers.indexOf(mk)));
+          mk.on('dragend', () => {
+            const ll = mk.getLngLat();
+            const idx = rxMarkers.indexOf(mk);
+            this.selectedRx = idx;
+            this.moveReceiver(idx, Number(ll.lat.toFixed(6)), Number(wrapLon(ll.lng).toFixed(6)));
+          });
+          rxMarkers[i] = mk;
+        }
+        marker.setLngLat([r.lon, r.lat]);
+      });
       const geojson = {
-        type: 'Feature' as const,
-        geometry: {
-          type: 'LineString' as const,
-          coordinates: [
-            [tx.tx_lon, tx.tx_lat],
-            [tgt.lon, tgt.lat],
-          ],
-        },
-        properties: {},
+        type: 'FeatureCollection' as const,
+        features: this.receivers.map((r) => ({
+          type: 'Feature' as const,
+          geometry: {
+            type: 'LineString' as const,
+            coordinates: [
+              [tx.tx_lon, tx.tx_lat],
+              [r.lon, r.lat],
+            ],
+          },
+          properties: { color: linkColor(r.analysis) },
+        })),
       };
       const draw = () => {
         if (!map) return;
         const src = map.getSource(LINK_LINE_ID) as maplibregl.GeoJSONSource | undefined;
         if (src) {
           src.setData(geojson);
-          map.setPaintProperty(LINK_LINE_ID, 'line-color', color);
         } else {
           map.addSource(LINK_LINE_ID, { type: 'geojson', data: geojson });
           map.addLayer({
@@ -448,7 +478,7 @@ const useStore = defineStore('store', {
             type: 'line',
             source: LINK_LINE_ID,
             layout: { 'line-cap': 'round' },
-            paint: { 'line-color': color, 'line-width': 2.5, 'line-dasharray': [2, 1.5] },
+            paint: { 'line-color': ['get', 'color'], 'line-width': 2.5, 'line-dasharray': [2, 1.5] },
           });
         }
       };
