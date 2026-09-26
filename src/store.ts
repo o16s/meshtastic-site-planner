@@ -8,6 +8,7 @@ import { draftPinElement, sitePinElement, targetPinElement } from './layers.ts';
 import { BASEMAPS, DEFAULT_BASEMAP, applyBasemap, emptyStyle, setHillshade, setSigfox } from './map/styles.ts';
 import { BasemapControl, ExportControl, MeasureControl } from './map/controls.ts';
 import { SearchControl } from './map/search.ts';
+import { CanvasOverlay } from './map/canvas.ts';
 import { coverageImage, cropToRadius } from './map/overlay.ts';
 import { coverageContours } from './map/contours.ts';
 import { canShareFiles, exportGeoJSON, exportKml, exportPngWorldFile, postCoverageToBridge, shareGeoJSON } from './map/export.ts';
@@ -49,6 +50,9 @@ const LINK_LINE_ID = 'mt-p2p-link';
 let measureControl: MeasureControl | undefined;
 let measureClickHandler: ((e: maplibregl.MapMouseEvent) => void) | undefined;
 let measureEscHandler: ((e: KeyboardEvent) => void) | undefined;
+// Canvas: one user image overlay + its blob URL.
+let canvas: CanvasOverlay | undefined;
+let canvasUrl: string | undefined;
 let measureA: { lat: number; lon: number } | null = null;
 const MEASURE_SRC = 'mt-measure';
 
@@ -239,6 +243,10 @@ const useStore = defineStore('store', {
       /** Measure/ruler tool (#15). */
       measureMode: false,
       measureResult: null as { distanceKm: number; bearingDeg: number } | null,
+      /** Canvas image overlay (file name empty when none). */
+      canvasName: '',
+      canvasOpacity: 60,
+      canvasLocked: false,
     }
   },
   actions: {
@@ -581,6 +589,41 @@ const useStore = defineStore('store', {
         clearSharedHash();
         clearSharedQuery();
       }
+    },
+
+    /* ---- Canvas: user image overlay ---- */
+    async importCanvas(file: File) {
+      if (!map) return;
+      const url = URL.createObjectURL(file);
+      const img = new Image();
+      img.src = url;
+      try {
+        await img.decode();
+      } catch {
+        URL.revokeObjectURL(url);
+        throw new Error(`${file.name} is not a readable PNG or JPG image.`);
+      }
+      this.removeCanvas();
+      canvas = new CanvasOverlay(map, url, img.naturalWidth, img.naturalHeight);
+      canvasUrl = url;
+      canvas.setOpacity(this.canvasOpacity / 100);
+      canvas.setLocked(this.canvasLocked);
+      this.canvasName = file.name;
+    },
+    setCanvasOpacity(v: number) {
+      this.canvasOpacity = v;
+      canvas?.setOpacity(v / 100);
+    },
+    setCanvasLocked(on: boolean) {
+      this.canvasLocked = on;
+      canvas?.setLocked(on);
+    },
+    removeCanvas() {
+      canvas?.remove();
+      canvas = undefined;
+      if (canvasUrl) URL.revokeObjectURL(canvasUrl);
+      canvasUrl = undefined;
+      this.canvasName = '';
     },
 
     /* ---- Measure / ruler tool (#15) ---- */

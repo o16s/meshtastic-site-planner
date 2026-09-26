@@ -65,6 +65,7 @@
       <Section title="Simulation Options"><Simulation /></Section>
       <Section title="Display" :default-open="true"><Display /></Section>
       <Section title="Point-to-point link"><PointToPoint /></Section>
+      <Section title="Canvas"><Canvas /></Section>
 
       <div v-if="store.localSites.length" class="pt-1">
         <div class="mb-2 text-xs font-bold tracking-[0.08em] text-ink-muted uppercase">Simulated sites</div>
@@ -188,6 +189,7 @@ import Environment from './components/Environment.vue';
 import Simulation from './components/Simulation.vue';
 import Display from './components/Display.vue';
 import PointToPoint from './components/PointToPoint.vue';
+import Canvas from './components/Canvas.vue';
 import AppDrawer from './components/ui/AppDrawer.vue';
 import Section from './components/ui/Section.vue';
 import MapLegend from './components/ui/MapLegend.vue';

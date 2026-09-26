@@ -533,6 +533,21 @@ body {
   border-radius: 0 0 0.5rem 0.5rem;
 }
 
+/* ---------- Map: canvas (image overlay) handles ---------- */
+
+.mt-canvas-handle,
+.mt-canvas-move {
+  width: 14px;
+  height: 14px;
+  background: var(--mt-primary);
+  border: 2px solid var(--mt-on-primary);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.5);
+}
+.mt-canvas-handle { border-radius: 2px; }
+.mt-canvas-nwse { cursor: nwse-resize; }
+.mt-canvas-nesw { cursor: nesw-resize; }
+.mt-canvas-move { border-radius: 50%; cursor: move; }
+
 /* ---------- Map: popups ---------- */
 
 .maplibregl-popup-content {
