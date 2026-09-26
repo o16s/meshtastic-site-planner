@@ -59,7 +59,7 @@ export class TerrainService implements TerrainProvider {
         : 4);
   }
 
-  getPage(ref: PageRef, opts: TerrainPageOptions = {}): Promise<Int16Array | null> {
+  async getPage(ref: PageRef, opts: TerrainPageOptions = {}): Promise<Int16Array | null> {
     const ippd = opts.ippd ?? 1200;
     const key = `page_${ippd}_${ref.minNorth}_${ref.minWest}`;
     let pending = this.memory.get(key);
@@ -69,7 +69,15 @@ export class TerrainService implements TerrainProvider {
       // Don't memoize failures: a retry should re-attempt the download.
       pending.catch(() => this.memory.delete(key));
     }
-    return pending;
+    try {
+      return await pending;
+    } catch (err) {
+      // The shared in-flight load was started (and aborted) by another
+      // caller's signal; ours is still live, so load again (it was evicted).
+      if (err instanceof DOMException && err.name === 'AbortError' && !opts.signal?.aborted)
+        return this.getPage(ref, opts);
+      throw err;
+    }
   }
 
   private async load(

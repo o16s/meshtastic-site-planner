@@ -100,4 +100,20 @@ describe('TerrainService', () => {
     );
     expect(peak).toBeLessThanOrEqual(2);
   });
+  it("survives another caller aborting the shared in-flight download", async () => {
+    const gz = syntheticHgtGz(7);
+    const svc = new TerrainService({
+      fetchFn: (async (_url: RequestInfo | URL, init?: RequestInit) => {
+        await new Promise((r) => setTimeout(r, 10));
+        if (init?.signal?.aborted) throw new DOMException('aborted', 'AbortError');
+        return new Response(gz);
+      }) as typeof fetch,
+    });
+    const first = new AbortController();
+    const a = svc.getPage(PAGE, { signal: first.signal });
+    const b = svc.getPage(PAGE, { signal: new AbortController().signal });
+    first.abort();
+    await expect(a).rejects.toThrow('aborted');
+    expect((await b)![0]).toBe(7);
+  });
 });
