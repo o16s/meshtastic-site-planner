@@ -43,7 +43,8 @@ export class BasemapControl implements IControl {
     private readonly names: string[],
     private current: string,
     private readonly onSwitch: (name: string) => void,
-    private readonly onHillshade?: (on: boolean) => void
+    /** Overlay checkboxes shown under the basemaps: [label, toggle]. */
+    private readonly overlays: [string, (on: boolean) => void][] = []
   ) {}
 
   onAdd(): HTMLElement {
@@ -78,14 +79,13 @@ export class BasemapControl implements IControl {
       list.appendChild(item);
     }
 
-    if (this.onHillshade) {
-      const toggle = this.onHillshade;
+    for (const [name, toggle] of this.overlays) {
       const label = document.createElement('label');
       label.className = 'mt-basemap-item mt-basemap-overlay';
       const box = document.createElement('input');
       box.type = 'checkbox';
       box.onchange = () => toggle(box.checked);
-      label.append(box, 'Hillshade');
+      label.append(box, name);
       list.appendChild(label);
     }
 

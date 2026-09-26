@@ -123,6 +123,32 @@ export function setHillshade(map: import('maplibre-gl').Map, on: boolean): void 
   );
 }
 
+/** Sigfox's public coverage map (tiles.sigfox.com): covered areas in cyan,
+ * transparent elsewhere, one global tile set up to z11. Not a documented
+ * API: the tile path carries a tile-set hash that their coverage page
+ * publishes, so fetch it fresh and fall back to the last known one. */
+const SIGFOX_ID = 'overlay-sigfox';
+const SIGFOX_FALLBACK = 'https://tiles.sigfox.com/def0891e15098dc856dae5c603e0a3d6/{z}/{x}/{y}.png';
+
+let sigfoxWanted = false;
+
+export async function setSigfox(map: import('maplibre-gl').Map, on: boolean): Promise<void> {
+  sigfoxWanted = on;
+  if (map.getLayer(SIGFOX_ID)) map.removeLayer(SIGFOX_ID);
+  if (map.getSource(SIGFOX_ID)) map.removeSource(SIGFOX_ID);
+  if (!on) return;
+  let url = SIGFOX_FALLBACK;
+  try {
+    const r = await fetch('https://sigfox-coverage.sigfox.com/combined?filtered=CH');
+    url = (await r.json()).templateUrl || url;
+  } catch {
+    /* keep the fallback */
+  }
+  if (!sigfoxWanted || map.getSource(SIGFOX_ID)) return; // toggled while fetching
+  const beforeId = (map.getStyle().layers ?? []).find((l) => !l.id.startsWith(BASEMAP_PREFIX))?.id;
+  map.addSource(SIGFOX_ID, raster([url], 256, 'Coverage &copy; <a href="https://www.sigfox.com/coverage/">Sigfox</a>', 11));
+  map.addLayer({ id: SIGFOX_ID, type: 'raster', source: SIGFOX_ID, paint: { 'raster-opacity': 0.5 } }, beforeId);
+}
 
 function raster(
   tiles: string[],

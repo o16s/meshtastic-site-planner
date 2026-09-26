@@ -519,15 +519,18 @@ body {
   background: rgba(255, 191, 0, 0.14);
 }
 
-/* Overlay toggles (hillshade) sit under the basemap list, divided off. */
+/* Overlay toggles (hillshade, Sigfox) sit under the basemap list; the first
+ * one carries the divider. */
 .mt-basemap-list .mt-basemap-overlay {
   display: flex;
   align-items: center;
   gap: 0.5rem;
+  accent-color: var(--mt-primary);
+}
+.mt-basemap-list .mt-basemap-overlay:first-of-type {
   margin-top: 0.25rem;
   border-top: 1px solid var(--mt-outline-variant);
   border-radius: 0 0 0.5rem 0.5rem;
-  accent-color: var(--mt-primary);
 }
 
 /* ---------- Map: popups ---------- */
